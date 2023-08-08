@@ -45,16 +45,24 @@ def loaders(dataset, path, batch_size, num_workers, transform_name, use_test=Fal
     path = os.path.join(path, dataset.lower())
     transform = getattr(getattr(Transforms, dataset), transform_name)
     train_set = ds(path, train=True, download=True, transform=transform.train)
+    if not hasattr(train_set,'train_labels'):
+        train_set.train_labels = train_set.targets
+
+
 
     if use_test:
         print('You are going to run models on the test set. Are you sure?')
         test_set = ds(path, train=False, download=True, transform=transform.test)
+        if not hasattr(test_set,'train_labels'):
+            test_set.train_labels = test_set.targets
     else:
         print("Using train (45000) + validation (5000)")
         train_set.train_data = train_set.train_data[:-5000]
         train_set.train_labels = train_set.train_labels[:-5000]
 
         test_set = ds(path, train=True, download=True, transform=transform.test)
+        if not hasattr(test_set,'train_labels'):
+            test_set.train_labels = test_set.targets
         test_set.train = False
         test_set.test_data = test_set.train_data[-5000:]
         test_set.test_labels = test_set.train_labels[-5000:]

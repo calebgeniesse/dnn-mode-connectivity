@@ -63,16 +63,16 @@ parser.add_argument('--wd', type=float, default=1e-4, metavar='WD',
 
 parser.add_argument('--seed', type=int, default=1, metavar='S', help='random seed (default: 1)')
 
-parser.add_argument('--batch-norm',
-                    type = bool,
-                    default=True,
-                    action=argparse.BooleanOptionalAction,
-                    help='do we need batch norm or not')
-parser.add_argument('--residual',
-                    type = bool,
-                    default=True,
-                    action=argparse.BooleanOptionalAction,
-                    help='do we need residula connect or not')
+# parser.add_argument('--batch-norm',
+#                     type = bool,
+#                     default=True,
+#                     action=argparse.BooleanOptionalAction,
+#                     help='do we need batch norm or not')
+# parser.add_argument('--residual',
+#                     type = bool,
+#                     default=True,
+#                     action=argparse.BooleanOptionalAction,
+#                     help='do we need residula connect or not')
 
 args = parser.parse_args()
 
@@ -109,34 +109,38 @@ else:
         args.fix_end,
         architecture_kwargs=architecture.kwargs,
     )
+    # model = torch.nn.DataParallel(model)
+
     base_model = None
     if args.resume is None:
-        for path, k in [(args.init_start, 0), (args.init_end, args.num_bends - 1)]:
+        
+        for (path, k) in [(args.init_start, 0), (args.init_end, args.num_bends - 1)]:
             if path is not None:
                 if base_model is None:
                     base_model = architecture.base(num_classes=num_classes, **architecture.kwargs)
                 checkpoint = torch.load(path)
-                if 'model_state' not in checkpoint:
-                    checkpoint = dict(model_state=checkpoint)
+                # if 'model_state' not in checkpoint:
+                #     checkpoint = dict(model_state=checkpoint)
                 
                 # TODO: hacky
-                if list(checkpoint['model_state'].keys())[0].startswith('module'):
+                if list(checkpoint.keys())[0].startswith('module'):
                     from collections import OrderedDict
                     new_state_dict = OrderedDict()
-                    for state_dict_key, state_dict_value in checkpoint['model_state'].items():
+                    for state_dict_key, state_dict_value in checkpoint.items():
                         new_state_dict_key = state_dict_key.replace('module.','')
                         new_state_dict[new_state_dict_key] = state_dict_value
-                    checkpoint['model_state'] = new_state_dict
+                    checkpoint = new_state_dict
                     
                 print('Loading %s as point #%d' % (path, k))
-                base_model.load_state_dict(checkpoint['model_state'])
+                # base_model = torch.nn.DataParallel(base_model)
+                base_model.load_state_dict(checkpoint)
                 model.import_base_parameters(base_model, k)
         if args.init_linear:
             print('Linear initialization.')
             model.init_linear()
+            
+# model = torch.nn.DataParallel(model)
 model.cuda()
-model = torch.nn.DataParallel(model)
-
 
 
 def learning_rate_schedule(base_lr, epoch, total_epochs):

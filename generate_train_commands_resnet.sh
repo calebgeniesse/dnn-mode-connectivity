@@ -22,7 +22,7 @@ for SEED_1 in "${SEEDS[@]}" ; do
                 --dir=/global/homes/g/geniesse/dnn-mode-connectivity/checkpoints \
                 --dataset=CIFAR10 \
                 --data_path=/global/homes/g/geniesse/data \
-                --transform=ResNet \
+                --transform=ToTensor \
                 --model=ResNet20BNres \
                 --epochs=10 \
                 --lr=0.1 \

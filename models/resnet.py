@@ -102,8 +102,9 @@ class BasicBlockCurve(nn.Module):
         self.conv1 = conv3x3curve(inplanes, planes, stride=stride, fix_points=fix_points)
         self.conv2 = conv3x3curve(planes, planes, fix_points=fix_points)
         if self.batch_norm_not:
-            self.bn1 = curves.BatchNorm2d(inplanes, fix_points=fix_points)
+            self.bn1 = curves.BatchNorm2d(planes, fix_points=fix_points)
             self.bn2 = curves.BatchNorm2d(planes, fix_points=fix_points)
+            self.bn3 = curves.BatchNorm2d(planes, fix_points=fix_points)
         self.downsample = downsample
         self.stride = stride
 
@@ -124,6 +125,7 @@ class BasicBlockCurve(nn.Module):
 
         if self.downsample is not None:
             residual = self.downsample(x, coeffs_t)
+            residual = self.bn3(residual, coeffs_t)
             
         if self.residual_not:
             out += residual
@@ -399,6 +401,8 @@ class ResNetCurve(nn.Module):
         self.inplanes = 16
         self.conv1 = curves.Conv2d(3, 16, kernel_size=3, padding=1,
                                    bias=False, fix_points=fix_points)
+        if self.batch_norm_not:
+            self.bn = curves.BatchNorm2d(self.base_channel * block.expansion, fix_points=fix_points)
         # self.layer1 = self._make_layer(block, 16, n, fix_points=fix_points)
         # self.layer2 = self._make_layer(block, 32, n, stride=2, fix_points=fix_points)
         # self.layer3 = self._make_layer(block, 64, n, stride=2, fix_points=fix_points)
@@ -423,7 +427,7 @@ class ResNetCurve(nn.Module):
                                        stride=2,
                                        fix_points=fix_points)
         
-        self.bn = curves.BatchNorm2d(64 * block.expansion, fix_points=fix_points)
+        
         self.relu = nn.ReLU(inplace=True)
         self.avgpool = nn.AvgPool2d(8)
         self.fc = curves.Linear(64 * block.expansion, num_classes, fix_points=fix_points)
@@ -500,6 +504,8 @@ class ResNetCurve(nn.Module):
                                   stride=stride, 
                                   bias=False, 
                                   fix_points=fix_points),)
+            
+        
                             
         
         layers = nn.ModuleList()
@@ -520,8 +526,11 @@ class ResNetCurve(nn.Module):
         # return nn.Sequential(*layers)
         return layers
 
-    def forward(self, x, coeffs_t):
+    def forward2(self, x, coeffs_t):
         x = self.conv1(x, coeffs_t)
+        if self.batch_norm_not:
+            x = self.bn(x, coeffs_t)
+        x = self.relu(x)
 
         for block in self.layer1:  # 32x32
             x = block(x, coeffs_t)
@@ -529,14 +538,38 @@ class ResNetCurve(nn.Module):
             x = block(x, coeffs_t)
         for block in self.layer3:  # 8x8
             x = block(x, coeffs_t)
-        x = self.bn(x, coeffs_t)
-        x = self.relu(x)
-
+       
         x = self.avgpool(x)
         x = x.view(x.size(0), -1)
         x = self.fc(x, coeffs_t)
 
         return x    
+    
+    def forward(self, x, coeffs_t):
+        output_list = []
+        x = self.conv1(x, coeffs_t)
+        if self.batch_norm_not:
+            x = self.bn(x, coeffs_t)
+        x = self.relu(x)  # 32x32
+        output_list.append(x.view(x.size(0), -1))
+
+        for layer in self.layer1:
+            x = layer(x, coeffs_t)  # 32x32
+            output_list.append(x.view(x.size(0), -1))
+        for layer in self.layer2:
+            x = layer(x, coeffs_t)  # 16x16
+            output_list.append(x.view(x.size(0), -1))
+        for layer in self.layer3:
+            x = layer(x, coeffs_t)  # 8x8
+            output_list.append(x.view(x.size(0), -1))
+
+        x = self.avgpool(x)
+        x = x.view(x.size(0), -1)
+        x = self.fc(x, coeffs_t)
+        output_list.append(x.view(x.size(0), -1))
+
+        # return output_list, x
+        return x
 
 
 

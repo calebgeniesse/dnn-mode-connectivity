@@ -35,6 +35,10 @@ class Transforms:
                 transforms.ToTensor(),
                 transforms.Normalize(mean=[0.4914, 0.4822, 0.4465], std=[0.2023, 0.1994, 0.2010]),
             ])
+        
+        class ToTensor:
+            train = transforms.ToTensor()
+            test = transforms.ToTensor()
 
     CIFAR100 = CIFAR10
 

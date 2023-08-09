@@ -43,6 +43,8 @@ def conv3x3curve(in_planes, out_planes, fix_points, stride=1):
 
 
 
+    
+
 class BasicBlock(nn.Module):
     expansion = 1
 
@@ -77,8 +79,9 @@ class BasicBlock(nn.Module):
         if self.batch_norm_not:
             out = self.bn2(out)
 
-        if self.downsample is not None:
+        if self.residual_not and (self.downsample is not None):
             residual = self.downsample(x)
+            
         if self.residual_not:
             out += residual
         out = self.relu(out)
@@ -182,7 +185,7 @@ class Bottleneck(nn.Module):
         if self.batch_norm_not:
             out = self.bn3(out)
 
-        if self.downsample is not None:
+        if self.residual_not and (self.downsample is not None):
             residual = self.downsample(x)
             
         if self.residual_not:
@@ -237,7 +240,7 @@ class BottleneckCurve(nn.Module):
         if self.batch_norm_not:
             out = self.bn3(out, coeffs_t)
 
-        if self.downsample is not None:
+        if self.residual_not and (self.downsample is not None):
             residual = self.downsample(x, coeffs_t)
 
         if self.residual_not:
@@ -375,13 +378,14 @@ class ResNetBase(nn.Module):
         return x
 
     
-class ModuleListCurve(nn.ModuleList):
-    def forward(self, x, coeff_t):
-        for module in self.modules():
-            x = module(x, coeff_t)
-        return x
 
-            
+class SequentialCurve(nn.Sequential):
+    """ TODO: move to curves.Sequential at some point """
+    def forward(self, x, coeff_t):
+        for module in self._modules.values():
+            x = module(x, coeff_t)
+        return x    
+    
 class ResNetCurve(nn.Module):
 
     def __init__(self, 
@@ -480,7 +484,7 @@ class ResNetCurve(nn.Module):
         if (stride != 1 or
                 self.inplanes != planes * block.expansion) and (residual_not):
             if batch_norm_not:
-                downsample = nn.Sequential(
+                downsample = SequentialCurve(
                     # nn.Conv2d(self.inplanes,
                     #           planes * block.expansion,
                     #           kernel_size=1,
@@ -498,7 +502,7 @@ class ResNetCurve(nn.Module):
                     curves.BatchNorm2d(planes * block.expansion, fix_points=fix_points),
                     )
             else:
-                downsample = nn.Sequential(
+                downsample = SequentialCurve(
                     curves.Conv2d(self.inplanes, 
                                   planes * block.expansion, 
                                   kernel_size=1,

@@ -272,19 +272,29 @@ class CurveNet(Module):
                 self.curve_modules.append(module)
 
     def import_base_parameters(self, base_model, index):
-        print(base_model)
-        print(self.net)
+        # print(base_model)
+        # print(self.net)
         parameters = list(self.net.parameters())[index::self.num_bends]
-        named_parameters = list(self.net.named_parameters())[index::self.num_bends]
         base_parameters = base_model.parameters()
-        base_named_parameters = list(base_model.named_parameters())
-
+        # named_parameters = list(self.net.named_parameters())[index::self.num_bends]
+        # base_named_parameters = list(base_model.named_parameters())
         for i,(parameter, base_parameter) in enumerate(zip(parameters, base_parameters)):
-            print(named_parameters[i][0])
-            print('\t',parameter.size())
-            print(base_named_parameters[i][0])
-            print('\t',base_parameter.size())
+            # print(named_parameters[i][0])
+            # print('\t',parameter.size())
+            # print(base_named_parameters[i][0])
+            # print('\t',base_parameter.size())
             parameter.data.copy_(base_parameter.data)
+            
+        # parameters = list(self.net.named_parameters())[index::self.num_bends]
+        # base_parameters = base_model.named_parameters()
+        # param_dict = {}
+        # for name, param in parameters:
+        #     param_dict[name[:-2]] = {'param': param}
+        # for name, param in base_parameters:
+        #     param_dict[name]['base_param'] = param
+        # for param_name, param_obj in param_dict.items():
+        #     param_obj['param'].data.copy_(param_obj['base_param'].data)
+        
 
     def import_base_buffers(self, base_model):
         for buffer, base_buffer in zip(self.net._all_buffers(), base_model._all_buffers()):

@@ -148,8 +148,19 @@ print(tabulate.tabulate([
         '', 'start', 'end', 'min', 'max', 'avg', 'int'
     ], tablefmt='simple', floatfmt='10.4f'))
 
+
+### define metric
+tr_err_argmax = np.argmax(np.abs(tr_err - (tr_err[0] + tr_err[-1])/2))
+mc_metric = (tr_err[0] + tr_err[-1])/2 - tr_err[tr_err_argmax]
+print(f"Mode Connectivity: {mc_metric}")
+
+### TODO: update this to include the DIR basename too
+### save things
+save_as_npz = os.path.join(args.dir, os.path.basename(args.ckpt).replace('.pt','_curve.npz'))
+
 np.savez(
-    os.path.join(args.dir, 'curve.npz'),
+    # os.path.join(args.dir, 'curve.npz'),
+    save_as_npz,
     ts=ts,
     dl=dl,
     tr_loss=tr_loss,
@@ -184,4 +195,7 @@ np.savez(
     te_err_max=te_err_max,
     te_err_avg=te_err_avg,
     te_err_int=te_err_int,
+    mc_metric=mc_metric,
 )
+
+print(f"[+] {save_as_npz}")

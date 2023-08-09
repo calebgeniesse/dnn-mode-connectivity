@@ -51,6 +51,8 @@ def loaders(dataset, path, batch_size, num_workers, transform_name, use_test=Fal
     train_set = ds(path, train=True, download=True, transform=transform.train)
     if not hasattr(train_set,'train_labels'):
         train_set.train_labels = train_set.targets
+    if not hasattr(train_set,'train_data'):
+        train_set.train_data = train_set.data
 
 
 
@@ -67,6 +69,9 @@ def loaders(dataset, path, batch_size, num_workers, transform_name, use_test=Fal
         test_set = ds(path, train=True, download=True, transform=transform.test)
         if not hasattr(test_set,'train_labels'):
             test_set.train_labels = test_set.targets
+        if not hasattr(test_set,'train_data'):
+            test_set.train_data = test_set.data
+        
         test_set.train = False
         test_set.test_data = test_set.train_data[-5000:]
         test_set.test_labels = test_set.train_labels[-5000:]

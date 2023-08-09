@@ -216,6 +216,7 @@ for epoch in range(start_epoch, args.epochs + 1):
     else:
         table = table.split('\n')[2]
     print(table)
+    
 
 if args.epochs % args.save_freq != 0:
     utils.save_checkpoint(

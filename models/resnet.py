@@ -22,6 +22,11 @@ __all__ = [
 ]
 
 
+
+################################################################################
+### helpers
+################################################################################  
+    
 def conv3x3(in_planes, out_planes, stride=1):
     "3x3 convolution with padding"
     return nn.Conv2d(in_planes,
@@ -42,9 +47,19 @@ def conv3x3curve(in_planes, out_planes, fix_points, stride=1):
                          bias=False)
 
 
-
+class SequentialCurve(nn.Sequential):
+    """ TODO: move to curves.Sequential at some point """
+    def forward(self, x, coeff_t):
+        for module in self._modules.values():
+            x = module(x, coeff_t)
+        return x    
+    
     
 
+################################################################################
+### BasicBlock, BasicBlockCurve
+################################################################################  
+    
 class BasicBlock(nn.Module):
     expansion = 1
 
@@ -138,7 +153,12 @@ class BasicBlockCurve(nn.Module):
     
         return out
     
+    
 
+################################################################################
+### Bottleneck, BottleneckCurve
+################################################################################  
+ 
 class Bottleneck(nn.Module):
     expansion = 4
 
@@ -252,11 +272,11 @@ class BottleneckCurve(nn.Module):
 
     
     
-    
-    
-    
+################################################################################
+### ResNetBase, ResNetCurve
+################################################################################  
+ 
 ALPHA_ = 1
-
 
 class ResNetBase(nn.Module):
 
@@ -379,13 +399,7 @@ class ResNetBase(nn.Module):
 
     
 
-class SequentialCurve(nn.Sequential):
-    """ TODO: move to curves.Sequential at some point """
-    def forward(self, x, coeff_t):
-        for module in self._modules.values():
-            x = module(x, coeff_t)
-        return x    
-    
+
 class ResNetCurve(nn.Module):
 
     def __init__(self, 
@@ -577,8 +591,13 @@ class ResNetCurve(nn.Module):
         # return output_list, x
         return x
 
-
-
+    
+    
+    
+################################################################################
+### models
+################################################################################  
+ 
 def resnet(**kwargs):
     """
     Constructs a ResNet model.

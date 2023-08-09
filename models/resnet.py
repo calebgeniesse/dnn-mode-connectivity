@@ -15,10 +15,10 @@ import curves
 
 __all__ = [
     'resnet', 
-    'ResNet20',
-    'ResNet20BNres',
-    'ResNet20BN',
-    'ResNet20res',    
+    'resnet20',
+    'resnet20_batch_norm_True_residual_True',
+    'resnet20_batch_norm_True_residual_False',    
+    'resnet20_batch_norm_False_residual_True',
 ]
 
 
@@ -104,7 +104,7 @@ class BasicBlockCurve(nn.Module):
         if self.batch_norm_not:
             self.bn1 = curves.BatchNorm2d(planes, fix_points=fix_points)
             self.bn2 = curves.BatchNorm2d(planes, fix_points=fix_points)
-            self.bn3 = curves.BatchNorm2d(planes, fix_points=fix_points)
+            # self.bn3 = curves.BatchNorm2d(planes, fix_points=fix_points)
         self.downsample = downsample
         self.stride = stride
 
@@ -123,9 +123,9 @@ class BasicBlockCurve(nn.Module):
         if self.batch_norm_not:
             out = self.bn2(out, coeffs_t)
 
-        if self.downsample is not None:
+        if self.residual_not and (self.downsample is not None):
             residual = self.downsample(x, coeffs_t)
-            residual = self.bn3(residual, coeffs_t)
+            # residual = self.bn3(residual, coeffs_t)
             
         if self.residual_not:
             out += residual
@@ -375,7 +375,13 @@ class ResNetBase(nn.Module):
         return x
 
     
+class ModuleListCurve(nn.ModuleList):
+    def forward(self, x, coeff_t):
+        for module in self.modules():
+            x = module(x, coeff_t)
+        return x
 
+            
 class ResNetCurve(nn.Module):
 
     def __init__(self, 
@@ -490,20 +496,16 @@ class ResNetCurve(nn.Module):
                     # nn.BatchNorm2d(planes * block.expansion),
                     # curves.BatchNorm2d(planes * block.expansion),
                     curves.BatchNorm2d(planes * block.expansion, fix_points=fix_points),
-                )
+                    )
             else:
                 downsample = nn.Sequential(
-                    # nn.Conv2d(self.inplanes,
-                    #           planes * block.expansion,
-                    #           kernel_size=1,
-                    #           stride=stride,
-                    #           bias=False)
                     curves.Conv2d(self.inplanes, 
                                   planes * block.expansion, 
                                   kernel_size=1,
                                   stride=stride, 
                                   bias=False, 
-                                  fix_points=fix_points),)
+                                  fix_points=fix_points),
+                )
             
         
                             
@@ -581,7 +583,7 @@ def resnet(**kwargs):
 
 
 
-class ResNet20:
+class resnet20:
     """ Use BN and Residuals by default """
     base = ResNetBase
     curve = ResNetCurve
@@ -592,7 +594,7 @@ class ResNet20:
     }
     
     
-class ResNet20BNres:
+class resnet20_batch_norm_True_residual_True:
     base = ResNetBase
     curve = ResNetCurve
     kwargs = {
@@ -601,7 +603,7 @@ class ResNet20BNres:
         'residual_not' : True,
     }
     
-class ResNet20BN:
+class resnet20_batch_norm_True_residual_False:
     base = ResNetBase
     curve = ResNetCurve
     kwargs = {
@@ -610,7 +612,7 @@ class ResNet20BN:
         'residual_not' : False,
     }
     
-class ResNet20res:
+class resnet20_batch_norm_False_residual_True:
     base = ResNetBase
     curve = ResNetCurve
     kwargs = {

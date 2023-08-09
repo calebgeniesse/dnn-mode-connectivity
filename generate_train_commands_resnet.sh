@@ -1,6 +1,6 @@
 #!/bin/bash
 
-MODEL_1="/global/homes/g/geniesse/dnn-mode-connectivity/checkpoints/ResNet20_loss_lens/resnet20_batch_norm_True_residual_True_seed_SEED_net.pkl"
+MODEL_1="/global/homes/g/geniesse/dnn-mode-connectivity/checkpoints/ResNet20_loss_lens/resnet20_batch_norm_True_residual_False_seed_SEED_net.pkl"
 
 SEEDS=(0 123 2023)
 
@@ -23,7 +23,7 @@ for SEED_1 in "${SEEDS[@]}" ; do
                 --dataset=CIFAR10 \
                 --data_path=/global/homes/g/geniesse/data \
                 --transform=ToTensor \
-                --model=ResNet20BNres \
+                --model=resnet20_batch_norm_True_residual_False \
                 --epochs=10 \
                 --lr=0.1 \
                 --wd=5e-4 \

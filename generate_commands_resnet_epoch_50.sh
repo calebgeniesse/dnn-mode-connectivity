@@ -6,8 +6,8 @@ MODELS=(
 )
 
 # TODO: can we skip training if we use linear initialization?
-EPOCHS=1
-EVAL_EPOCH=0
+EPOCHS=50
+EVAL_EPOCH=50
 
 
 for MODEL_1 in "${MODELS[@]}" ; do
@@ -21,7 +21,8 @@ for MODEL_1 in "${MODELS[@]}" ; do
     SAVE_PATH="/global/homes/g/geniesse/dnn-mode-connectivity/checkpoints"
 
 
-    SEEDS=(0 123 2023)
+    SEEDS=(0 123 2023 123456)
+    # SEEDS=(0 123 2023)
 
     for SEED_1 in "${SEEDS[@]}" ; do
         for SEED_2 in "${SEEDS[@]}" ; do

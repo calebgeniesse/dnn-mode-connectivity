@@ -1,0 +1,335 @@
+import torch
+from torch import nn
+
+from einops import rearrange, repeat
+from einops.layers.torch import Rearrange
+
+
+import curves
+
+__all__ = [
+    'VIT',
+    'VIT_model_seed_SEED_threshold_00',
+    'VIT_model_seed_SEED_threshold_100'   
+]
+           
+
+    
+
+################################################################################
+### helpers
+################################################################################  
+
+def pair(t):
+    return t if isinstance(t, tuple) else (t, t)
+
+ 
+class SequentialCurve(nn.Sequential):
+    """ TODO: move to curves.Sequential at some point """
+    def forward(self, x, coeff_t):
+        for module in self._modules.values():
+            try:
+                x = module(x, coeff_t)
+            except TypeError:
+                x = module(x)
+        return x 
+
+    
+class LayerNormCurve(nn.Module):
+    def __init__(self, dim, fix_points):
+        super(LayerNormCurve, self).__init__() #fix_points, ('weight', 'bias'))
+        self.dim = dim
+        self.fix_points = fix_points
+        
+    def forward(self, x, coeff_t):
+        # x = nn.functional.layer_norm(x)
+        return x
+    
+################################################################################
+### FeedForward, FeedForwardCurve
+################################################################################
+
+class FeedForward(nn.Module):
+    def __init__(self, dim, hidden_dim, dropout = 0.):
+        super().__init__()
+        self.net = nn.Sequential(
+            nn.LayerNorm(dim),
+            nn.Linear(dim, hidden_dim),
+            nn.GELU(),
+            nn.Dropout(dropout),
+            nn.Linear(hidden_dim, dim),
+            nn.Dropout(dropout)
+        )
+
+    def forward(self, x):
+        return self.net(x)
+    
+    
+class FeedForwardCurve(nn.Module):
+    def __init__(self, dim, hidden_dim, fix_points, dropout = 0.):
+        super().__init__()
+        self.fix_points = fix_points
+        self.net = SequentialCurve(
+            LayerNormCurve(dim, fix_points),
+            curves.Linear(dim, hidden_dim, fix_points),
+            nn.GELU(),
+            nn.Dropout(dropout),
+            curves.Linear(hidden_dim, dim, fix_points),
+            nn.Dropout(dropout)
+        )
+
+    def forward(self, x, coeff_t):
+        return self.net(x, coeff_t)
+
+    
+    
+################################################################################
+### Attention, AttentionCurve
+################################################################################
+
+class Attention(nn.Module):
+    def __init__(self, dim, heads = 8, dim_head = 64, dropout = 0.):
+        super().__init__()
+        inner_dim = dim_head *  heads
+        project_out = not (heads == 1 and dim_head == dim)
+
+        self.heads = heads
+        self.scale = dim_head ** -0.5
+
+        self.norm = nn.LayerNorm(dim)
+
+        self.attend = nn.Softmax(dim = -1)
+        self.dropout = nn.Dropout(dropout)
+
+        self.to_qkv = nn.Linear(dim, inner_dim * 3, bias = False)
+
+        self.to_out = nn.Sequential(
+            nn.Linear(inner_dim, dim),
+            nn.Dropout(dropout)
+        ) if project_out else nn.Identity()
+
+    def forward(self, x):
+        x = self.norm(x)
+
+        qkv = self.to_qkv(x).chunk(3, dim = -1)
+        q, k, v = map(lambda t: rearrange(t, 'b n (h d) -> b h n d', h = self.heads), qkv)
+
+        dots = torch.matmul(q, k.transpose(-1, -2)) * self.scale
+
+        attn = self.attend(dots)
+        attn = self.dropout(attn)
+
+        out = torch.matmul(attn, v)
+        out = rearrange(out, 'b h n d -> b n (h d)')
+        return self.to_out(out)
+    
+
+class AttentionCurve(nn.Module):
+    def __init__(self, dim, fix_points, heads = 8, dim_head = 64, dropout = 0.):
+        super().__init__()
+        inner_dim = dim_head *  heads
+        project_out = not (heads == 1 and dim_head == dim)
+
+        self.heads = heads
+        self.scale = dim_head ** -0.5
+
+        self.norm = LayerNormCurve(dim, fix_points)
+
+        self.attend = nn.Softmax(dim = -1)
+        self.dropout = nn.Dropout(dropout)
+
+        self.to_qkv = curves.Linear(dim, inner_dim * 3, fix_points, bias = False)
+
+        self.to_out = SequentialCurve(
+            curves.Linear(inner_dim, dim, fix_points),
+            nn.Dropout(dropout)
+        ) if project_out else nn.Identity()
+
+    def forward(self, x, coeff_t):
+        x = self.norm(x, coeff_t)
+
+        qkv = self.to_qkv(x, coeff_t).chunk(3, dim = -1)
+        q, k, v = map(lambda t: rearrange(t, 'b n (h d) -> b h n d', h = self.heads), qkv)
+
+        dots = torch.matmul(q, k.transpose(-1, -2)) * self.scale
+
+        attn = self.attend(dots)
+        attn = self.dropout(attn)
+
+        out = torch.matmul(attn, v)
+        out = rearrange(out, 'b h n d -> b n (h d)')
+        return self.to_out(out, coeff_t)
+    
+  
+
+################################################################################
+### Transformer, TransformerCurve
+################################################################################
+  
+class Transformer(nn.Module):
+    def __init__(self, dim, depth, heads, dim_head, mlp_dim, dropout = 0.):
+        super().__init__()
+        self.norm = nn.LayerNorm(dim)
+        self.layers = nn.ModuleList([])
+        for _ in range(depth):
+            self.layers.append(nn.ModuleList([
+                Attention(dim, heads = heads, dim_head = dim_head, dropout = dropout),
+                FeedForward(dim, mlp_dim, dropout = dropout)
+            ]))
+
+    def forward(self, x):
+        for attn, ff in self.layers:
+            x = attn(x) + x
+            x = ff(x) + x
+
+        return self.norm(x)
+    
+    
+class TransformerCurve(nn.Module):
+    def __init__(self, dim, depth, heads, dim_head, mlp_dim, fix_points, dropout = 0.):
+        super().__init__()
+        self.norm = LayerNormCurve(dim, fix_points)
+        self.layers = nn.ModuleList([])
+        for _ in range(depth):
+            self.layers.append(nn.ModuleList([
+                AttentionCurve(dim, fix_points, heads = heads, dim_head = dim_head, dropout = dropout),
+                FeedForwardCurve(dim, mlp_dim, fix_points, dropout = dropout)
+            ]))
+
+    def forward(self, x, coeff_t):
+        for attn, ff in self.layers:
+            x = attn(x, coeff_t) + x
+            x = ff(x, coeff_t) + x
+
+        return self.norm(x, coeff_t)
+
+    
+    
+################################################################################
+### ViT, ViTCurve
+################################################################################
+
+class ViTBase(nn.Module):
+    def __init__(self, num_classes, image_size, patch_size, dim, depth, heads, mlp_dim, pool = 'cls', channels = 3, dim_head = 64, dropout = 0., emb_dropout = 0.):
+        super(ViTBase, self).__init__()
+        image_height, image_width = pair(image_size)
+        patch_height, patch_width = pair(patch_size)
+
+        assert image_height % patch_height == 0 and image_width % patch_width == 0, 'Image dimensions must be divisible by the patch size.'
+
+        num_patches = (image_height // patch_height) * (image_width // patch_width)
+        patch_dim = channels * patch_height * patch_width
+        assert pool in {'cls', 'mean'}, 'pool type must be either cls (cls token) or mean (mean pooling)'
+
+        self.to_patch_embedding = nn.Sequential(
+            Rearrange('b c (h p1) (w p2) -> b (h w) (p1 p2 c)', p1 = patch_height, p2 = patch_width),
+            nn.LayerNorm(patch_dim),
+            nn.Linear(patch_dim, dim),
+            nn.LayerNorm(dim),
+        )
+
+        self.pos_embedding = nn.Parameter(torch.randn(1, num_patches + 1, dim))
+        self.cls_token = nn.Parameter(torch.randn(1, 1, dim))
+        self.dropout = nn.Dropout(emb_dropout)
+
+        self.transformer = Transformer(dim, depth, heads, dim_head, mlp_dim, dropout)
+
+        self.pool = pool
+        self.to_latent = nn.Identity()
+
+        self.mlp_head = nn.Linear(dim, num_classes)
+
+    def forward(self, img):
+        x = self.to_patch_embedding(img)
+        b, n, _ = x.shape
+
+        cls_tokens = repeat(self.cls_token, '1 1 d -> b 1 d', b = b)
+        x = torch.cat((cls_tokens, x), dim=1)
+        x += self.pos_embedding[:, :(n + 1)]
+        x = self.dropout(x)
+
+        x = self.transformer(x)
+
+        x = x.mean(dim = 1) if self.pool == 'mean' else x[:, 0]
+
+        x = self.to_latent(x)
+        return self.mlp_head(x)
+    
+    
+    
+class ViTCurve(nn.Module):
+    def __init__(self, num_classes, image_size, patch_size, dim, depth, heads, mlp_dim, fix_points, pool = 'cls', channels = 3, dim_head = 64, dropout = 0., emb_dropout = 0.):
+        super(ViTCurve, self).__init__()
+        image_height, image_width = pair(image_size)
+        patch_height, patch_width = pair(patch_size)
+
+        assert image_height % patch_height == 0 and image_width % patch_width == 0, 'Image dimensions must be divisible by the patch size.'
+
+        num_patches = (image_height // patch_height) * (image_width // patch_width)
+        patch_dim = channels * patch_height * patch_width
+        assert pool in {'cls', 'mean'}, 'pool type must be either cls (cls token) or mean (mean pooling)'
+        
+        self.to_patch_embedding = SequentialCurve(
+            Rearrange('b c (h p1) (w p2) -> b (h w) (p1 p2 c)', p1 = patch_height, p2 = patch_width),
+            LayerNormCurve(patch_dim, fix_points),
+            curves.Linear(patch_dim, dim, fix_points),
+            LayerNormCurve(dim, fix_points),
+        )
+
+        self.pos_embedding = nn.Parameter(torch.randn(1, num_patches + 1, dim))
+        self.cls_token = nn.Parameter(torch.randn(1, 1, dim))
+        self.dropout = nn.Dropout(emb_dropout)
+
+        self.transformer = TransformerCurve(dim, depth, heads, dim_head, mlp_dim, fix_points, dropout)
+
+        self.pool = pool
+        self.to_latent = nn.Identity()
+
+        self.mlp_head = curves.Linear(dim, num_classes, fix_points)
+
+    def forward(self, img, coeff_t):
+        x = self.to_patch_embedding(img, coeff_t)
+        b, n, _ = x.shape
+
+        cls_tokens = repeat(self.cls_token, '1 1 d -> b 1 d', b = b)
+        x = torch.cat((cls_tokens, x), dim=1)
+        x += self.pos_embedding[:, :(n + 1)]
+        x = self.dropout(x)
+
+        x = self.transformer(x, coeff_t)
+
+        x = x.mean(dim = 1) if self.pool == 'mean' else x[:, 0]
+
+        x = self.to_latent(x)
+        return self.mlp_head(x, coeff_t)
+    
+    
+    
+################################################################################
+### models
+################################################################################
+
+class VIT:
+    base = ViTBase
+    curve = ViTCurve
+    kwargs = dict(
+        image_size = 32, 
+        patch_size = 4, 
+        dim = 1024, 
+        depth = 6, 
+        heads = 16, 
+        mlp_dim = 2048,
+        dropout = 0.1,
+        emb_dropout = 0.1
+    )
+
+    
+class VIT_model_seed_SEED_threshold_00:
+    base = ViTBase
+    curve = ViTCurve
+    kwargs = {}
+    
+class VIT_model_seed_SEED_threshold_100:
+    base = ViTBase
+    curve = ViTCurve
+    kwargs = {}

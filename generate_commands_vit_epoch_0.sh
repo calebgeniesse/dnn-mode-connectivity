@@ -53,7 +53,7 @@ for MODEL_1 in "${MODELS[@]}" ; do
                     --dataset=CIFAR10 \
                     --data_path=/global/homes/g/geniesse/data \
                     --transform=ToTensor \
-                    --model=VIT \
+                    --model=ViT \
                     --epochs=${EPOCHS} \
                     --lr=1e-3 \
                     --wd=5e-4 \

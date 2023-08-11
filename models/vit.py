@@ -8,9 +8,9 @@ from einops.layers.torch import Rearrange
 import curves
 
 __all__ = [
-    'VIT',
-    'VIT_model_seed_SEED_threshold_00',
-    'VIT_model_seed_SEED_threshold_100'   
+    'ViT',
+    # 'VIT_model_seed_SEED_threshold_00',
+    # 'VIT_model_seed_SEED_threshold_100'   
 ]
            
 
@@ -23,7 +23,8 @@ __all__ = [
 def pair(t):
     return t if isinstance(t, tuple) else (t, t)
 
- 
+
+
 class SequentialCurve(nn.Sequential):
     """ TODO: move to curves.Sequential at some point """
     def forward(self, x, coeff_t):
@@ -33,17 +34,46 @@ class SequentialCurve(nn.Sequential):
             except TypeError:
                 x = module(x)
         return x 
-
+    
     
 class LayerNormCurve(nn.Module):
     def __init__(self, dim, fix_points):
         super(LayerNormCurve, self).__init__() #fix_points, ('weight', 'bias'))
-        self.dim = dim
-        self.fix_points = fix_points
+        # self.dim = dim
+        # self.fix_points = fix_points
+        self.norm = nn.LayerNorm(dim)
         
     def forward(self, x, coeff_t):
         # x = nn.functional.layer_norm(x)
+        x = self.norm(x)
         return x
+    
+    
+    
+################################################################################
+### PreNorm, PreNormCurve
+################################################################################
+
+class PreNorm(nn.Module):
+    def __init__(self, dim, fn):
+        super().__init__()
+        self.norm = nn.LayerNorm(dim)
+        self.fn = fn
+    def forward(self, x, **kwargs):
+        return self.fn(self.norm(x), **kwargs)
+    
+    
+class PreNormCurve(nn.Module):
+    def __init__(self, dim, fix_points, fn):
+        super().__init__()
+        self.norm = LayerNormCurve(dim, fix_points)
+        self.fn = fn
+    def forward(self, x, coeff_t, **kwargs):
+        # TODO: do we need to pass coeff_t twice?
+        # return self.fn(self.norm(x, coeff_t), **kwargs)
+        return self.fn(self.norm(x, coeff_t), coeff_t, **kwargs)
+
+    
     
 ################################################################################
 ### FeedForward, FeedForwardCurve
@@ -53,33 +83,30 @@ class FeedForward(nn.Module):
     def __init__(self, dim, hidden_dim, dropout = 0.):
         super().__init__()
         self.net = nn.Sequential(
-            nn.LayerNorm(dim),
             nn.Linear(dim, hidden_dim),
             nn.GELU(),
             nn.Dropout(dropout),
             nn.Linear(hidden_dim, dim),
             nn.Dropout(dropout)
         )
-
     def forward(self, x):
         return self.net(x)
-    
+
     
 class FeedForwardCurve(nn.Module):
     def __init__(self, dim, hidden_dim, fix_points, dropout = 0.):
         super().__init__()
-        self.fix_points = fix_points
         self.net = SequentialCurve(
-            LayerNormCurve(dim, fix_points),
             curves.Linear(dim, hidden_dim, fix_points),
             nn.GELU(),
             nn.Dropout(dropout),
             curves.Linear(hidden_dim, dim, fix_points),
             nn.Dropout(dropout)
         )
-
     def forward(self, x, coeff_t):
         return self.net(x, coeff_t)
+    
+   
 
     
     
@@ -96,8 +123,6 @@ class Attention(nn.Module):
         self.heads = heads
         self.scale = dim_head ** -0.5
 
-        self.norm = nn.LayerNorm(dim)
-
         self.attend = nn.Softmax(dim = -1)
         self.dropout = nn.Dropout(dropout)
 
@@ -109,8 +134,6 @@ class Attention(nn.Module):
         ) if project_out else nn.Identity()
 
     def forward(self, x):
-        x = self.norm(x)
-
         qkv = self.to_qkv(x).chunk(3, dim = -1)
         q, k, v = map(lambda t: rearrange(t, 'b n (h d) -> b h n d', h = self.heads), qkv)
 
@@ -133,8 +156,6 @@ class AttentionCurve(nn.Module):
         self.heads = heads
         self.scale = dim_head ** -0.5
 
-        self.norm = LayerNormCurve(dim, fix_points)
-
         self.attend = nn.Softmax(dim = -1)
         self.dropout = nn.Dropout(dropout)
 
@@ -146,8 +167,6 @@ class AttentionCurve(nn.Module):
         ) if project_out else nn.Identity()
 
     def forward(self, x, coeff_t):
-        x = self.norm(x, coeff_t)
-
         qkv = self.to_qkv(x, coeff_t).chunk(3, dim = -1)
         q, k, v = map(lambda t: rearrange(t, 'b n (h d) -> b h n d', h = self.heads), qkv)
 
@@ -160,6 +179,7 @@ class AttentionCurve(nn.Module):
         out = rearrange(out, 'b h n d -> b n (h d)')
         return self.to_out(out, coeff_t)
     
+    
   
 
 ################################################################################
@@ -169,39 +189,39 @@ class AttentionCurve(nn.Module):
 class Transformer(nn.Module):
     def __init__(self, dim, depth, heads, dim_head, mlp_dim, dropout = 0.):
         super().__init__()
-        self.norm = nn.LayerNorm(dim)
         self.layers = nn.ModuleList([])
         for _ in range(depth):
             self.layers.append(nn.ModuleList([
-                Attention(dim, heads = heads, dim_head = dim_head, dropout = dropout),
-                FeedForward(dim, mlp_dim, dropout = dropout)
+                PreNorm(dim, Attention(dim, heads = heads, dim_head = dim_head, dropout = dropout)),
+                PreNorm(dim, FeedForward(dim, mlp_dim, dropout = dropout))
             ]))
-
     def forward(self, x):
         for attn, ff in self.layers:
             x = attn(x) + x
             x = ff(x) + x
-
-        return self.norm(x)
+        return x
     
     
 class TransformerCurve(nn.Module):
     def __init__(self, dim, depth, heads, dim_head, mlp_dim, fix_points, dropout = 0.):
         super().__init__()
-        self.norm = LayerNormCurve(dim, fix_points)
         self.layers = nn.ModuleList([])
         for _ in range(depth):
             self.layers.append(nn.ModuleList([
-                AttentionCurve(dim, fix_points, heads = heads, dim_head = dim_head, dropout = dropout),
-                FeedForwardCurve(dim, mlp_dim, fix_points, dropout = dropout)
+                PreNormCurve(dim, fix_points, AttentionCurve(
+                    dim, fix_points, heads = heads, dim_head = dim_head, dropout = dropout
+                )),
+                PreNormCurve(dim, fix_points, FeedForwardCurve(
+                    dim, mlp_dim, fix_points, dropout = dropout
+                ))
             ]))
-
     def forward(self, x, coeff_t):
         for attn, ff in self.layers:
             x = attn(x, coeff_t) + x
             x = ff(x, coeff_t) + x
+        return x
+    
 
-        return self.norm(x, coeff_t)
 
     
     
@@ -211,7 +231,7 @@ class TransformerCurve(nn.Module):
 
 class ViTBase(nn.Module):
     def __init__(self, num_classes, image_size, patch_size, dim, depth, heads, mlp_dim, pool = 'cls', channels = 3, dim_head = 64, dropout = 0., emb_dropout = 0.):
-        super(ViTBase, self).__init__()
+        super().__init__()
         image_height, image_width = pair(image_size)
         patch_height, patch_width = pair(patch_size)
 
@@ -237,7 +257,10 @@ class ViTBase(nn.Module):
         self.pool = pool
         self.to_latent = nn.Identity()
 
-        self.mlp_head = nn.Linear(dim, num_classes)
+        self.mlp_head = nn.Sequential(
+            nn.LayerNorm(dim),
+            nn.Linear(dim, num_classes)
+        )
 
     def forward(self, img):
         x = self.to_patch_embedding(img)
@@ -259,7 +282,7 @@ class ViTBase(nn.Module):
     
 class ViTCurve(nn.Module):
     def __init__(self, num_classes, image_size, patch_size, dim, depth, heads, mlp_dim, fix_points, pool = 'cls', channels = 3, dim_head = 64, dropout = 0., emb_dropout = 0.):
-        super(ViTCurve, self).__init__()
+        super().__init__()
         image_height, image_width = pair(image_size)
         patch_height, patch_width = pair(patch_size)
 
@@ -268,7 +291,7 @@ class ViTCurve(nn.Module):
         num_patches = (image_height // patch_height) * (image_width // patch_width)
         patch_dim = channels * patch_height * patch_width
         assert pool in {'cls', 'mean'}, 'pool type must be either cls (cls token) or mean (mean pooling)'
-        
+
         self.to_patch_embedding = SequentialCurve(
             Rearrange('b c (h p1) (w p2) -> b (h w) (p1 p2 c)', p1 = patch_height, p2 = patch_width),
             LayerNormCurve(patch_dim, fix_points),
@@ -285,7 +308,10 @@ class ViTCurve(nn.Module):
         self.pool = pool
         self.to_latent = nn.Identity()
 
-        self.mlp_head = curves.Linear(dim, num_classes, fix_points)
+        self.mlp_head = SequentialCurve(
+            LayerNormCurve(dim, fix_points),
+            curves.Linear(dim, num_classes, fix_points)
+        )
 
     def forward(self, img, coeff_t):
         x = self.to_patch_embedding(img, coeff_t)
@@ -305,11 +331,14 @@ class ViTCurve(nn.Module):
     
     
     
+    
 ################################################################################
 ### models
 ################################################################################
 
-class VIT:
+# from vit_pytorch import ViT as ViTBase 
+
+class ViT:
     base = ViTBase
     curve = ViTCurve
     kwargs = dict(
@@ -324,12 +353,12 @@ class VIT:
     )
 
     
-class VIT_model_seed_SEED_threshold_00:
-    base = ViTBase
-    curve = ViTCurve
-    kwargs = {}
+# class VIT_model_seed_SEED_threshold_00:
+#     base = ViTBase
+#     curve = ViTCurve
+#     kwargs = {}
     
-class VIT_model_seed_SEED_threshold_100:
-    base = ViTBase
-    curve = ViTCurve
-    kwargs = {}
+# class VIT_model_seed_SEED_threshold_100:
+#     base = ViTBase
+#     curve = ViTCurve
+#     kwargs = {}

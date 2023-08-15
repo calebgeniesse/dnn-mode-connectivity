@@ -36,17 +36,33 @@ class SequentialCurve(nn.Sequential):
         return x 
     
     
-class LayerNormCurve(curves.CurveModule):
-    def __init__(self, dim, fix_points):
-        super(LayerNormCurve, self).__init__(fix_points, ('weight', 'bias'))
-        # self.dim = dim
-        # self.fix_points = fix_points
-        # self.norm = nn.LayerNorm(dim)
+# class LayerNormCurve(curves.CurveModule):
+#     def __init__(self, dim, fix_points):
+#         super(LayerNormCurve, self).__init__(fix_points, ('weight', 'bias'))
+#         # self.dim = dim
+#         # self.fix_points = fix_points
+#         # self.norm = nn.LayerNorm(dim)
+#         for i, fixed in enumerate(self.fix_points):
+#             if self.affine:
+#                 self.register_parameter(
+#                     'weight_%d' % i,
+#                     nn.Parameter(torch.Tensor(num_features), requires_grad=not fixed)
+#                 )
+#             else:
+#                 self.register_parameter('weight_%d' % i, None)
+#         for i, fixed in enumerate(self.fix_points):
+#             if self.affine:
+#                 self.register_parameter(
+#                     'bias_%d' % i,
+#                     nn.Parameter(torch.Tensor(num_features), requires_grad=not fixed)
+#                 )
+#             else:
+#                 self.register_parameter('bias_%d' % i, None)
         
-    def forward(self, x, coeff_t):
-        x = nn.functional.layer_norm(x)
-        # x = self.norm(x)
-        return x
+#     def forward(self, x, coeff_t):
+#         x = nn.functional.layer_norm(x)
+#         # x = self.norm(x)
+#         return x
     
     
     
@@ -66,7 +82,7 @@ class PreNorm(nn.Module):
 class PreNormCurve(nn.Module):
     def __init__(self, dim, fix_points, fn):
         super().__init__()
-        self.norm = LayerNormCurve(dim, fix_points)
+        self.norm = curves.LayerNorm(dim, fix_points)
         self.fn = fn
     def forward(self, x, coeff_t, **kwargs):
         # TODO: do we need to pass coeff_t twice?
@@ -294,13 +310,34 @@ class ViTCurve(nn.Module):
 
         self.to_patch_embedding = SequentialCurve(
             Rearrange('b c (h p1) (w p2) -> b (h w) (p1 p2 c)', p1 = patch_height, p2 = patch_width),
-            LayerNormCurve(patch_dim, fix_points),
+            curves.LayerNorm(patch_dim, fix_points),
             curves.Linear(patch_dim, dim, fix_points),
-            LayerNormCurve(dim, fix_points),
+            curves.LayerNorm(dim, fix_points),
         )
-
-        self.pos_embedding = nn.Parameter(torch.randn(1, num_patches + 1, dim))
-        self.cls_token = nn.Parameter(torch.randn(1, 1, dim))
+    
+        
+        print(fix_points)
+        self.fix_points = fix_points
+        
+        for i, fixed in enumerate(self.fix_points):
+            self.register_parameter(
+                'pos_embedding_%d' % i,
+                    nn.Parameter(torch.randn(1, num_patches + 1, dim), requires_grad=not fixed)
+                )
+            
+        for i, fixed in enumerate(self.fix_points):
+            self.register_parameter(
+                'cls_token_%d' % i,
+                    nn.Parameter(torch.randn(1, 1, dim), requires_grad=not fixed)
+                )
+            
+        # self.register_parameter('pos_embedding', 
+        #                        nn.Parameter(torch.randn(1, num_patches + 1, dim)))
+        # self.register_parameter('cls_token', 
+        #                        nn.Parameter(torch.randn(1, 1, dim)))
+        
+        # self.pos_embedding = nn.Parameter(torch.randn(1, num_patches + 1, dim))
+        # self.cls_token = nn.Parameter(torch.randn(1, 1, dim))
         self.dropout = nn.Dropout(emb_dropout)
 
         self.transformer = TransformerCurve(dim, depth, heads, dim_head, mlp_dim, fix_points, dropout)
@@ -309,11 +346,33 @@ class ViTCurve(nn.Module):
         self.to_latent = nn.Identity()
 
         self.mlp_head = SequentialCurve(
-            LayerNormCurve(dim, fix_points),
+            curves.LayerNorm(dim, fix_points),
             curves.Linear(dim, num_classes, fix_points)
         )
+        
 
+    def compute_weights_t(self, coeffs_t, parameter_names=None):
+        if parameter_names is None:
+            parameter_names = self.parameter_names
+        w_t = [None] * len(parameter_names)
+        # self.l2 = 0.0
+        for i, parameter_name in enumerate(parameter_names):
+            for j, coeff in enumerate(coeffs_t):
+                parameter = getattr(self, '%s_%d' % (parameter_name, j))
+                if parameter is not None:
+                    if w_t[i] is None:
+                        w_t[i] = parameter * coeff
+                    else:
+                        w_t[i] += parameter * coeff
+            # if w_t[i] is not None:
+            #    self.l2 += torch.sum(w_t[i] ** 2)
+        return w_t
+    
+    
     def forward(self, img, coeff_t):
+        
+        self.cls_token, self.pos_embedding = self.compute_weights_t(coeff_t, parameter_names=['cls_token', 'pos_embedding'])
+        
         x = self.to_patch_embedding(img, coeff_t)
         b, n, _ = x.shape
 

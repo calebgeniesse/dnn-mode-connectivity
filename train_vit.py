@@ -171,15 +171,13 @@ else:
                 #         new_state_dict[new_state_dict_key] = state_dict_value
                 #     checkpoint = new_state_dict
                 
-                print(list(checkpoint.keys()))
-                print(base_model)
+                # print(list(checkpoint.keys()))
+                # print(base_model)
                 
                 print('Loading %s as point #%d' % (path, k))
-                # base_model = torch.nn.DataParallel(base_model)
                 base_model.load_state_dict(checkpoint)
-                print(base_model)
-                print(model)
                 model.import_base_parameters(base_model, k)
+                
         if args.init_linear:
             print('Linear initialization.')
             model.init_linear()
@@ -208,7 +206,7 @@ regularizer = None if args.curve is None else curves.l2_regularizer(args.wd)
 #     momentum=args.momentum,
 #     weight_decay=args.wd if args.curve is None else 0.0
 # )
-optimizer = optim.Adam(base_model.parameters(), lr=args.lr)
+optimizer = torch.optim.Adam(base_model.parameters(), lr=args.lr)
 
 
 

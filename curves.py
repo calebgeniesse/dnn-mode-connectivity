@@ -272,28 +272,38 @@ class CurveNet(Module):
                 self.curve_modules.append(module)
 
     def import_base_parameters(self, base_model, index):
-        # print(base_model)
-        # print(self.net)
-        parameters = list(self.net.parameters())[index::self.num_bends]
-        base_parameters = base_model.parameters()
+        # print([_ for _,__ in list(self.net.named_parameters())[index::self.num_bends]])
+        # print([_ for _,__ in list(base_model.named_parameters())])
+
+        # parameters = list(self.net.parameters())[index::self.num_bends]
+        # base_parameters = base_model.parameters()
         # named_parameters = list(self.net.named_parameters())[index::self.num_bends]
         # base_named_parameters = list(base_model.named_parameters())
-        for i,(parameter, base_parameter) in enumerate(zip(parameters, base_parameters)):
-            # print(named_parameters[i][0])
-            # print('\t',parameter.size())
-            # print(base_named_parameters[i][0])
-            # print('\t',base_parameter.size())
-            parameter.data.copy_(base_parameter.data)
+        # for i,(parameter, base_parameter) in enumerate(zip(parameters, base_parameters)):
+        #     print(named_parameters[i][0])
+        #     print('\t',parameter.size())
+        #     print(base_named_parameters[i][0])
+        #     print('\t',base_parameter.size())
+        #     parameter.data.copy_(base_parameter.data)
             
-        # parameters = list(self.net.named_parameters())[index::self.num_bends]
-        # base_parameters = base_model.named_parameters()
-        # param_dict = {}
-        # for name, param in parameters:
-        #     param_dict[name[:-2]] = {'param': param}
-        # for name, param in base_parameters:
-        #     param_dict[name]['base_param'] = param
-        # for param_name, param_obj in param_dict.items():
-        #     param_obj['param'].data.copy_(param_obj['base_param'].data)
+        parameters = list(self.net.named_parameters())[index::self.num_bends]
+        base_parameters = base_model.named_parameters()
+        param_dict = {}
+        for name, param in parameters:
+            if name[-2] == '_':   
+                param_dict[name[:-2]] = {'param': param}
+            else:
+                param_dict[name] = {'param': param}
+        for name, param in base_parameters:
+            if name not in param_dict:
+                print(f"[!] {name} (from base_model) not found in model")
+                continue
+            param_dict[name]['base_param'] = param
+        for param_name, param_obj in param_dict.items():
+            if 'base_param' not in param_obj:
+                print(f"[!] {param_name} not found in base_model parameters")
+                continue
+            param_obj['param'].data.copy_(param_obj['base_param'].data)
         
 
     def import_base_buffers(self, base_model):
@@ -335,3 +345,4 @@ class CurveNet(Module):
 
 def l2_regularizer(weight_decay):
     return lambda model: 0.5 * weight_decay * model.l2
+

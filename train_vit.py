@@ -100,13 +100,20 @@ loaders, num_classes = data.loaders(
 
 ## TODO
 # Training
-# train_loader, test_loader = operation.get_data_cifar10(batch_size_train, batch_size_test)
+# import vit_utils
+# train_loader, test_loader = vit_utils.get_data_cifar10(batch_size_train, batch_size_test)
+# loaders = dict(
+#     train = train_loader,
+#     test = test_loader
+# )
+     
 # # print(len(train_loader))
 
 
 # num_examples = len(train_loader)*batch_size_train
 # num_cifar10c = int(num_examples*threshold)
 # x,targets = load_cifar10c(n_examples=num_cifar10c, data_dir='./data/CIFAR10-C')
+# x,targets = load_cifar10c(n_examples=num_cifar10c, data_dir=args.data_dir)
 # # print(x.size())
 
 # y1 = [x[batch_size_train*i:batch_size_train*i + batch_size_train,:,:,:] for i in range(int(x.size()[0]/batch_size_train))]
@@ -170,6 +177,8 @@ else:
                 print('Loading %s as point #%d' % (path, k))
                 # base_model = torch.nn.DataParallel(base_model)
                 base_model.load_state_dict(checkpoint)
+                print(base_model)
+                print(model)
                 model.import_base_parameters(base_model, k)
         if args.init_linear:
             print('Linear initialization.')

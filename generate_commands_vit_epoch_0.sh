@@ -1,16 +1,22 @@
 #!/bin/bash
 
-MODELS=(
-    "VIT_model_seed_SEED_threshold_{00}"
-    "VIT_model_seed_SEED_threshold_{100}"
+THRESHOLDS=(
+    "00"
+    "100"
 )
+# MODELS=(
+#     "VIT_model_seed_SEED_threshold_{00}"
+#     "VIT_model_seed_SEED_threshold_{100}"
+# )
 
 # TODO: can we skip training if we use linear initialization?
 EPOCHS=1
 EVAL_EPOCH=0
 
 
-for MODEL_1 in "${MODELS[@]}" ; do
+for THRESHOLD in "${THRESHOLDS[@]}" ; do
+
+    MODEL_1="VIT_model_seed_SEED_threshold_\{${THRESHOLD}\}"
 
     echo ""
     echo "###" ${MODEL_1}
@@ -42,7 +48,7 @@ for MODEL_1 in "${MODELS[@]}" ; do
             
             CHECKPOINT_1=${CHECKPOINTS_DIR}/checkpoint-${EVAL_EPOCH}.pt
 
-            THRESHOLD=0
+            # THRESHOLD=0
             
             # echo ${MODE_1}
             # echo ${MODE_2}

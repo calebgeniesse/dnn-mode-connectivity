@@ -36,16 +36,16 @@ class SequentialCurve(nn.Sequential):
         return x 
     
     
-class LayerNormCurve(nn.Module):
+class LayerNormCurve(curves.CurveModule):
     def __init__(self, dim, fix_points):
-        super(LayerNormCurve, self).__init__() #fix_points, ('weight', 'bias'))
+        super(LayerNormCurve, self).__init__(fix_points, ('weight', 'bias'))
         # self.dim = dim
         # self.fix_points = fix_points
-        self.norm = nn.LayerNorm(dim)
+        # self.norm = nn.LayerNorm(dim)
         
     def forward(self, x, coeff_t):
-        # x = nn.functional.layer_norm(x)
-        x = self.norm(x)
+        x = nn.functional.layer_norm(x)
+        # x = self.norm(x)
         return x
     
     
@@ -282,7 +282,7 @@ class ViTBase(nn.Module):
     
 class ViTCurve(nn.Module):
     def __init__(self, num_classes, image_size, patch_size, dim, depth, heads, mlp_dim, fix_points, pool = 'cls', channels = 3, dim_head = 64, dropout = 0., emb_dropout = 0.):
-        super().__init__()
+        super(ViTCurve, self).__init__()
         image_height, image_width = pair(image_size)
         patch_height, patch_width = pair(patch_size)
 

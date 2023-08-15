@@ -11,6 +11,8 @@ import data
 import models
 import utils
 
+import numpy as np
+
 
 parser = argparse.ArgumentParser(description='DNN curve training')
 parser.add_argument('--dir', type=str, default='/tmp/curve/', metavar='DIR',
@@ -98,30 +100,33 @@ loaders, num_classes = data.loaders(
 )
 
 
-## TODO
-# Training
-# import vit_utils
-# train_loader, test_loader = vit_utils.get_data_cifar10(batch_size_train, batch_size_test)
-# loaders = dict(
-#     train = train_loader,
-#     test = test_loader
-# )
-     
-# # print(len(train_loader))
 
 
-# num_examples = len(train_loader)*batch_size_train
-# num_cifar10c = int(num_examples*threshold)
-# x,targets = load_cifar10c(n_examples=num_cifar10c, data_dir='./data/CIFAR10-C')
-# x,targets = load_cifar10c(n_examples=num_cifar10c, data_dir=args.data_dir)
-# # print(x.size())
+###############################################################################
+### VIT (augmentation specific
+###############################################################################
 
-# y1 = [x[batch_size_train*i:batch_size_train*i + batch_size_train,:,:,:] for i in range(int(x.size()[0]/batch_size_train))]
-# y2 = [targets[batch_size_train*i:batch_size_train*i + batch_size_train] for i in range(int(x.size()[0]/batch_size_train))]
-# # print(len(y1))
+threshold = int(args.threshold)
+if threshold == 100:
+    
+    # TODO: test vs. train for testing??
+    # TODO: change so that we can use variable thresholds (e.g., < 100)
+    
+    from robustbench.data import load_cifar10c
 
-
-
+    num_examples = len(loaders['train'])*args.batch_size
+    num_cifar10c = int(num_examples * threshold)
+    x, targets = load_cifar10c(n_examples=num_cifar10c, data_dir=args.data_path)
+    print(x.size())
+    
+    x_c = [x[args.batch_size*i:args.batch_size*i + args.batch_size,:,:,:] for i in range(int(x.size()[0]/args.batch_size))]
+    y_c = [targets[args.batch_size*i:args.batch_size*i + args.batch_size] for i in range(int(x.size()[0]/args.batch_size))]
+    
+    loaders['train'].train_data = x_c
+    loaders['train'].train_labels = y_c
+    
+###############################################################################
+    
 
 
 
@@ -236,12 +241,13 @@ test_res = {'loss': None, 'accuracy': None, 'nll': None}
 for epoch in range(start_epoch, args.epochs + 1):
     time_ep = time.time()
 
+    lr = args.lr
     # lr = learning_rate_schedule(args.lr, epoch, args.epochs)
     # utils.adjust_learning_rate(optimizer, lr)
 
     train_res = utils.train(loaders['train'], model, optimizer, criterion, regularizer)
-    if args.curve is None or not has_bn:
-        test_res = utils.test(loaders['test'], model, criterion, regularizer)
+    # if args.curve is None or not has_bn:
+    #    test_res = utils.test(loaders['test'], model, criterion, regularizer)
 
     if epoch % args.save_freq == 0:
         utils.save_checkpoint(

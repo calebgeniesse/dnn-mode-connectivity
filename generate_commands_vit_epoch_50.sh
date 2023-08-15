@@ -10,8 +10,8 @@ THRESHOLDS=(
 # )
 
 # TODO: can we skip training if we use linear initialization?
-EPOCHS=1
-EVAL_EPOCH=0
+EPOCHS=50
+EVAL_EPOCH=50
 
 
 for THRESHOLD in "${THRESHOLDS[@]}" ; do

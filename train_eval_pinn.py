@@ -64,6 +64,7 @@ parser.add_argument('--momentum', type=float, default=0.9, metavar='M',
 parser.add_argument('--wd', type=float, default=1e-4, metavar='WD',
                     help='weight decay (default: 1e-4)')
 
+
 # parser.add_argument('--seed', type=int, default=1, metavar='S', help='random seed (default: 1)')
 
 # parser.add_argument('--batch-norm',
@@ -97,6 +98,13 @@ parser.add_argument('--layers', type=str, default='50,50,50,50,1', help='Dimensi
 parser.add_argument('--net', type=str, default='DNN', help='The net architecture that is to be used.')
 parser.add_argument('--activation', default='tanh', help='Activation to use in the network.')
 parser.add_argument('--loss_style', default='mean', help='Loss for the network (MSE, vs. summing).')
+
+
+
+parser.add_argument('--num_points', type=int, default=5, metavar='N',
+                    help='number of points on the curve (default: 61)')
+parser.add_argument('--ckpt', type=str, default=None, metavar='CKPT',
+                    help='checkpoint to eval (default: None)')
 
 
 args = parser.parse_args()
@@ -255,6 +263,8 @@ pinn_model = PINN_MODEL(
     activation=args.activation, 
     loss_style=args.loss_style,
 )
+   
+
 
 
 ###############################################################################
@@ -320,6 +330,8 @@ else:
 # model = torch.nn.DataParallel(model)
 model.cuda()
 pinn_model.cuda()
+pinn_model.dnn = copy.deepcopy(model) 
+
 
 def learning_rate_schedule(base_lr, epoch, total_epochs):
     alpha = epoch / total_epochs
@@ -401,11 +413,15 @@ for epoch in range(start_epoch, args.epochs + 1):
     
     # pinn_model = PINN(dnn=DNN)
     # CurveNetPINN(architecture=DNNCurve)
-    
-    pinn_model.dnn = copy.deepcopy(model)
-    # pinn_model.dnn.eval() #.to(device)
-    
+    # def get_weights_copy(m):
+    #     weights_path = 'weights_temp.pt'
+    #     torch.save(m.state_dict(), weights_path)
+    #     return mode.load_state_dict(torch.load(weights_path))
+
+    pinn_model.dnn.load_state_dict(copy.deepcopy(model.state_dict()))
     pinn_model.train()
+    model.load_state_dict(copy.deepcopy(pinn_model.dnn.state_dict())) 
+    
     loss = pinn_model.loss_pinn()
     
     
@@ -483,3 +499,167 @@ if args.epochs % args.save_freq != 0:
         model_state=model.state_dict(),
         optimizer_state=optimizer.state_dict()
     )
+
+    
+    
+
+    
+###############################################################################
+### EVAL
+###############################################################################
+    
+
+checkpoint = torch.load(args.ckpt)
+model.load_state_dict(checkpoint['model_state'])
+pinn_model.dnn = copy.deepcopy(model)
+# pinn_model.load_state_dict(copy.deepcopy(model.state_dict()))
+
+# criterion = F.cross_entropy
+# regularizer = curves.l2_regularizer(args.wd)
+
+T = args.num_points
+ts = np.linspace(0.0, 1.0, T)
+tr_loss = np.zeros(T)
+tr_error_u_rel =  np.zeros(T)
+tr_error_u_abs =  np.zeros(T)
+tr_error_u_linf = np.zeros(T)
+te_error_u_rel =  np.zeros(T)
+te_error_u_abs =  np.zeros(T)
+te_error_u_linf = np.zeros(T)
+
+dl = np.zeros(T)
+
+previous_weights = None
+
+columns = ['t', 'Train loss', 
+           'Train error (rel)', 'Train error (abs)', 'Train error (linf)',
+           'Test error (rel)', 'Test error (abs)', 'Test error (linf)',
+          ]
+
+t = torch.FloatTensor([0.0]).cuda()
+for i, t_value in enumerate(ts):
+    t.data.fill_(t_value)
+    
+    # pinn_model.dnn = model
+    
+    weights = model.weights(t)
+    if previous_weights is not None:
+        dl[i] = np.sqrt(np.sum(np.square(weights - previous_weights)))
+    previous_weights = weights.copy()
+
+    ### PINN STUFF
+    # pinn_model.dnn = copy.deepcopy(model)
+    # pinn_model.dnn.eval() #.to(device)
+    
+    # pinn_model.dnn.load_state_dict(copy.deepcopy(model.state_dict()))
+
+    # pinn_model.dnn = copy.deepcopy(model)        
+    tr_loss[i] = pinn_model.loss_pinn(coeff_t=t)
+    
+   
+    
+    
+    # utils.update_bn(loaders['train'], model, t=t)
+    # r_res = utils.test(loaders['train'], model, criterion, regularizer, t=t)
+    # te_res = utils.test(loaders['test'], model, criterion, regularizer, t=t)
+    
+    
+    x_ = np.linspace(0, 2*np.pi, args.xgrid, endpoint=False).reshape(-1, 1) # not inclusive
+    t_ = np.linspace(0, 1, args.nt).reshape(-1, 1)
+    X_, T_ = np.meshgrid(x_, t_) # all the X grid points T times, all the T grid points X times
+    
+    # Training Error = (pred(X) vs. t) 
+    u_pred = pinn_model.predict(X_, coeff_t=t)
+    tr_error_u_rel[i] = np.linalg.norm(t_-u_pred, 2)/np.linalg.norm(t_, 2)
+    tr_error_u_abs[i] = np.mean(np.abs(t_ - u_pred))
+    tr_error_u_linf[i] = np.linalg.norm(t_ - u_pred, np.inf)/np.linalg.norm(t_, np.inf)
+    
+    
+    # Test Error = (pred(X_star) vs. u_star)
+    u_pred = pinn_model.predict(X_star, coeff_t=t)
+    te_error_u_rel[i] = np.linalg.norm(u_star-u_pred, 2)/np.linalg.norm(u_star, 2)
+    te_error_u_abs[i] = np.mean(np.abs(u_star - u_pred))
+    te_error_u_linf[i] = np.linalg.norm(u_star - u_pred, np.inf)/np.linalg.norm(u_star, np.inf)
+
+    
+
+    values = [t, tr_loss[i],
+              tr_error_u_rel[i], tr_error_u_abs[i], tr_error_u_linf[i],
+              te_error_u_rel[i], te_error_u_abs[i], te_error_u_linf[i]
+             ]
+    
+    table = tabulate.tabulate([values], columns, tablefmt='simple', floatfmt='10.4f')
+    if i % 40 == 0:
+        table = table.split('\n')
+        table = '\n'.join([table[1]] + table)
+    else:
+        table = table.split('\n')[2]
+    print(table)
+
+
+def stats(values, dl):
+    min = np.min(values)
+    max = np.max(values)
+    avg = np.mean(values)
+    int = np.sum(0.5 * (values[:-1] + values[1:]) * dl[1:]) / np.sum(dl[1:])
+    return min, max, avg, int
+
+
+tr_loss_min, tr_loss_max, tr_loss_avg, tr_loss_int = stats(tr_loss, dl)
+tr_error_u_rel_min, tr_error_u_rel_max, tr_error_u_rel_avg, tr_error_u_rel_int = stats(tr_error_u_rel, dl)
+tr_error_u_abs_min, tr_error_u_abs_max, tr_error_u_abs_avg, tr_error_u_abs_int = stats(tr_error_u_abs, dl)
+tr_error_u_linf_min, tr_error_u_linf_max, tr_error_u_linf_avg, tr_error_u_linf_int = stats(tr_error_u_linf, dl)
+
+te_error_u_rel_min, te_error_u_rel_max, te_error_u_rel_avg, te_error_u_rel_int = stats(te_error_u_rel, dl)
+te_error_u_abs_min, te_error_u_abs_max, te_error_u_abs_avg, te_error_u_abs_int = stats(te_error_u_abs, dl)
+te_error_u_linf_min, te_error_u_linf_max, te_error_u_linf_avg, te_error_u_linf_int = stats(te_error_u_linf, dl)
+
+print('Length: %.2f' % np.sum(dl))
+print(tabulate.tabulate([
+        ['train loss', tr_loss[0], tr_loss[-1], tr_loss_min, tr_loss_max, tr_loss_avg, tr_loss_int],
+['train error (rel)', te_error_u_rel[0], te_error_u_rel[-1], te_error_u_rel_min, te_error_u_rel_max, te_error_u_rel_avg, te_error_u_rel_int],
+['train error (abs)', te_error_u_abs[0], te_error_u_abs[-1], te_error_u_abs_min, te_error_u_abs_max, te_error_u_abs_avg, te_error_u_abs_int],
+['train error (linf)', te_error_u_linf[0], te_error_u_linf[-1], te_error_u_linf_min, te_error_u_linf_max, te_error_u_linf_avg, te_error_u_linf_int],
+
+], [
+        '', 'start', 'end', 'min', 'max', 'avg', 'int'
+    ], tablefmt='simple', floatfmt='10.4f'))
+
+
+### define metric
+# tr_err = tr_error_u_abs
+tr_err = tr_error_u_rel
+tr_err_argmax = np.argmax(np.abs(tr_err - (tr_err[0] + tr_err[-1])/2))
+mc_metric = (tr_err[0] + tr_err[-1])/2 - tr_err[tr_err_argmax]
+print(f"Mode Connectivity: {mc_metric}")
+
+
+### TODO: update this to include the DIR basename too
+### save things
+save_as_npz = os.path.join(args.dir, os.path.basename(args.ckpt).replace('.pt','_curve.npz'))
+
+np.savez(
+    # os.path.join(args.dir, 'curve.npz'),
+    save_as_npz,
+    ts=ts,
+    dl=dl,
+    tr_loss=tr_loss,
+    tr_loss_min=tr_loss_min,
+    tr_loss_max=tr_loss_max,
+    tr_loss_avg=tr_loss_avg,
+    tr_loss_int=tr_loss_int,
+    tr_error_u_rel=tr_error_u_abs,
+    tr_error_u_rel_min=tr_error_u_rel_min,
+    tr_error_u_rel_max=tr_error_u_rel_max,
+    tr_error_u_rel_avg=tr_error_u_rel_avg,
+    tr_error_u_rel_int=tr_error_u_rel_int,
+    tr_error_u_abs=tr_error_u_abs,
+    tr_error_u_abs_min=tr_error_u_abs_min,
+    tr_error_u_abs_max=tr_error_u_abs_max,
+    tr_error_u_abs_avg=tr_error_u_abs_avg,
+    tr_error_u_abs_int=tr_error_u_abs_int,
+    # TODO: save the rest
+    mc_metric=mc_metric,
+)
+
+print(f"[+] {save_as_npz}")

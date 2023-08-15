@@ -255,16 +255,12 @@ class BatchNorm2d(_BatchNorm):
             
 class LayerNorm(CurveModule):
     
-    def __init__(self, normalized_shape, fix_points, eps=1e-5, momentum=0.1, affine=True,
-                 track_running_stats=True):
+    def __init__(self, normalized_shape, fix_points, eps=1e-5, momentum=0.1, affine=True):
         super(LayerNorm, self).__init__(fix_points, ('weight', 'bias'))
         self.normalized_shape = (normalized_shape,)
         self.eps = eps
-        self.momentum = momentum
         self.affine = affine
-        self.track_running_stats = track_running_stats
 
-        self.l2 = 0.0
         for i, fixed in enumerate(self.fix_points):
             if self.affine:
                 self.register_parameter(
@@ -281,44 +277,18 @@ class LayerNorm(CurveModule):
                 )
             else:
                 self.register_parameter('bias_%d' % i, None)
-
-        if self.track_running_stats:
-            self.register_buffer('running_mean', torch.zeros(normalized_shape))
-            self.register_buffer('running_var', torch.ones(normalized_shape))
-            self.register_buffer('num_batches_tracked', torch.tensor(0, dtype=torch.long))
-        else:
-            self.register_parameter('running_mean', None)
-            self.register_parameter('running_var', None)
-            self.register_parameter('num_batches_tracked', None)
+                
         self.reset_parameters()
         
 
-    def reset_running_stats(self):
-        if self.track_running_stats:
-            self.running_mean.zero_()
-            self.running_var.fill_(1)
-            self.num_batches_tracked.zero_()
-
     def reset_parameters(self):
-        self.reset_running_stats()
         if self.affine:
             for i in range(self.num_bends):
                 getattr(self, 'weight_%d' % i).data.uniform_()
                 getattr(self, 'bias_%d' % i).data.zero_()
 
     def forward(self, input, coeffs_t):
-
-        exponential_average_factor = 0.0
-
-        if self.training and self.track_running_stats:
-            self.num_batches_tracked += 1
-            if self.momentum is None:  # use cumulative moving average
-                exponential_average_factor = 1.0 / self.num_batches_tracked.item()
-            else:  # use exponential moving average
-                exponential_average_factor = self.momentum
-                
         weight_t, bias_t = self.compute_weights_t(coeffs_t)
-        
         return F.layer_norm(
             input, self.normalized_shape, weight_t, bias_t, self.eps)
     

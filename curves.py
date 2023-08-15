@@ -250,6 +250,80 @@ class BatchNorm2d(_BatchNorm):
         if input.dim() != 4:
             raise ValueError('expected 4D input (got {}D input)'
                              .format(input.dim()))
+            
+            
+            
+class LayerNorm(CurveModule):
+    
+    def __init__(self, normalized_shape, fix_points, eps=1e-5, momentum=0.1, affine=True,
+                 track_running_stats=True):
+        super(LayerNorm, self).__init__(fix_points, ('weight', 'bias'))
+        self.normalized_shape = (normalized_shape,)
+        self.eps = eps
+        self.momentum = momentum
+        self.affine = affine
+        self.track_running_stats = track_running_stats
+
+        self.l2 = 0.0
+        for i, fixed in enumerate(self.fix_points):
+            if self.affine:
+                self.register_parameter(
+                    'weight_%d' % i,
+                    Parameter(torch.Tensor(normalized_shape), requires_grad=not fixed)
+                )
+            else:
+                self.register_parameter('weight_%d' % i, None)
+        for i, fixed in enumerate(self.fix_points):
+            if self.affine:
+                self.register_parameter(
+                    'bias_%d' % i,
+                    Parameter(torch.Tensor(normalized_shape), requires_grad=not fixed)
+                )
+            else:
+                self.register_parameter('bias_%d' % i, None)
+
+        if self.track_running_stats:
+            self.register_buffer('running_mean', torch.zeros(normalized_shape))
+            self.register_buffer('running_var', torch.ones(normalized_shape))
+            self.register_buffer('num_batches_tracked', torch.tensor(0, dtype=torch.long))
+        else:
+            self.register_parameter('running_mean', None)
+            self.register_parameter('running_var', None)
+            self.register_parameter('num_batches_tracked', None)
+        self.reset_parameters()
+        
+
+    def reset_running_stats(self):
+        if self.track_running_stats:
+            self.running_mean.zero_()
+            self.running_var.fill_(1)
+            self.num_batches_tracked.zero_()
+
+    def reset_parameters(self):
+        self.reset_running_stats()
+        if self.affine:
+            for i in range(self.num_bends):
+                getattr(self, 'weight_%d' % i).data.uniform_()
+                getattr(self, 'bias_%d' % i).data.zero_()
+
+    def forward(self, input, coeffs_t):
+
+        exponential_average_factor = 0.0
+
+        if self.training and self.track_running_stats:
+            self.num_batches_tracked += 1
+            if self.momentum is None:  # use cumulative moving average
+                exponential_average_factor = 1.0 / self.num_batches_tracked.item()
+            else:  # use exponential moving average
+                exponential_average_factor = self.momentum
+                
+        weight_t, bias_t = self.compute_weights_t(coeffs_t)
+        
+        return F.layer_norm(
+            input, self.normalized_shape, weight_t, bias_t, self.eps)
+    
+
+   
 
 
 class CurveNet(Module):
@@ -272,8 +346,9 @@ class CurveNet(Module):
                 self.curve_modules.append(module)
 
     def import_base_parameters(self, base_model, index):
-        # print([_ for _,__ in list(self.net.named_parameters())[index::self.num_bends]])
-        # print([_ for _,__ in list(base_model.named_parameters())])
+        
+        # print('model => ',[_ for _,__ in list(self.net.named_parameters())[index::self.num_bends]])
+        # print(' base => ',[_ for _,__ in list(base_model.named_parameters())])
 
         # parameters = list(self.net.parameters())[index::self.num_bends]
         # base_parameters = base_model.parameters()

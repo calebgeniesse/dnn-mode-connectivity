@@ -46,6 +46,8 @@ class CurveModule(Module):
     def compute_weights_t(self, coeffs_t):
         w_t = [None] * len(self.parameter_names)
         self.l2 = 0.0
+        coeffs_t = coeffs_t / coeffs_t.sum()
+        
         for i, parameter_name in enumerate(self.parameter_names):
             for j, coeff in enumerate(coeffs_t):
                 parameter = getattr(self, '%s_%d' % (parameter_name, j))
@@ -293,9 +295,7 @@ class LayerNorm(CurveModule):
             input, self.normalized_shape, weight_t, bias_t, self.eps)
     
 
-   
-
-
+    
 class CurveNet(Module):
     def __init__(self, num_classes, curve, architecture, num_bends, fix_start=True, fix_end=True,
                  architecture_kwargs={}):

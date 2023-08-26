@@ -23,7 +23,7 @@ for THRESHOLD in "${THRESHOLDS[@]}" ; do
     echo ""
     
     # MODEL_1="resnet20_batch_norm_True_residual_True"
-    MODE_PATH="/global/homes/g/geniesse/dnn-mode-connectivity/checkpoints/Vit_loss_lens/${MODEL_1}.pt"
+    MODE_PATH="/global/homes/g/geniesse/dnn-mode-connectivity/checkpoints/ViT-models/${MODEL_1}.pt"
     SAVE_PATH="/global/homes/g/geniesse/dnn-mode-connectivity/checkpoints"
 
 
@@ -61,8 +61,8 @@ for THRESHOLD in "${THRESHOLDS[@]}" ; do
                     --transform=ToTensor \
                     --model=ViT \
                     --epochs=${EPOCHS} \
-                    --lr=1e-3 \
-                    --wd=5e-4 \
+                    --lr=1e-4 \
+                    --wd=5e-5 \
                     --curve=Bezier \
                     --num_bends=3 \
                     --init_start=${MODE_1} \

@@ -316,13 +316,13 @@ class ViTCurve(nn.Module):
         )
     
         
-        print(fix_points)
+        self.l2 = 0.0
         self.fix_points = fix_points
         
         for i, fixed in enumerate(self.fix_points):
             self.register_parameter(
                 'pos_embedding_%d' % i,
-                    nn.Parameter(torch.randn(1, num_patches + 1, dim), requires_grad=not fixed)
+                    nn.Parameter(torch.randn(1, num_patches + 1, dim), requires_grad= not fixed)
                 )
             
         for i, fixed in enumerate(self.fix_points):
@@ -338,6 +338,7 @@ class ViTCurve(nn.Module):
         
         # self.pos_embedding = nn.Parameter(torch.randn(1, num_patches + 1, dim))
         # self.cls_token = nn.Parameter(torch.randn(1, 1, dim))
+        
         self.dropout = nn.Dropout(emb_dropout)
 
         self.transformer = TransformerCurve(dim, depth, heads, dim_head, mlp_dim, fix_points, dropout)
@@ -355,8 +356,11 @@ class ViTCurve(nn.Module):
         if parameter_names is None:
             parameter_names = self.parameter_names
         w_t = [None] * len(parameter_names)
-        # self.l2 = 0.0
+        coeffs_t = coeffs_t / coeffs_t.sum()
+        
         for i, parameter_name in enumerate(parameter_names):
+                
+            # arithmetic
             for j, coeff in enumerate(coeffs_t):
                 parameter = getattr(self, '%s_%d' % (parameter_name, j))
                 if parameter is not None:
@@ -364,8 +368,9 @@ class ViTCurve(nn.Module):
                         w_t[i] = parameter * coeff
                     else:
                         w_t[i] += parameter * coeff
-            # if w_t[i] is not None:
-            #    self.l2 += torch.sum(w_t[i] ** 2)
+            
+            if w_t[i] is not None:
+                self.l2 += torch.sum(w_t[i] ** 2)
         return w_t
     
     

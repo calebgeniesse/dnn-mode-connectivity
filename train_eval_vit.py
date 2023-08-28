@@ -121,6 +121,8 @@ if threshold == 100:
 
     num_examples = len(loaders['train'])*args.batch_size
     num_cifar10c = int(num_examples * threshold)
+    print(f"num_examples = {num_examples}")
+    print(f"num_cifar10c = {num_cifar10c}")
     x, targets = load_cifar10c(n_examples=num_cifar10c, data_dir=args.data_path)
     print(x.size())
     
@@ -218,7 +220,15 @@ regularizer = None if args.curve is None else curves.l2_regularizer(args.wd)
 #     weight_decay=args.wd if args.curve is None else 0.0
 # )
 optimizer = torch.optim.Adam(base_model.parameters(), lr=args.lr)
-
+def get_lr(optimizer):
+    for param_group in optimizer.param_groups:
+        return param_group['lr']
+    
+def get_last_lr(optimizer):
+    lr = None
+    for param_group in optimizer.param_groups:
+        lr = param_group['lr']
+    return lr
 
 
 start_epoch = 1
@@ -233,7 +243,7 @@ if args.resume is not None:
     model.load_state_dict(checkpoint['model_state'])
     optimizer.load_state_dict(checkpoint['optimizer_state'])
 
-columns = ['ep', 'lr', 'tr_loss', 'tr_acc', 'te_nll', 'te_acc', 'time']
+columns = ['ep', 'lr', 'lr_last', 'tr_loss', 'tr_acc', 'te_nll', 'te_acc', 'time']
 
 utils.save_checkpoint(
     args.dir,
@@ -250,12 +260,15 @@ for epoch in range(start_epoch, args.epochs + 1):
     # lr = args.lr
     # lr = learning_rate_schedule(args.lr, epoch, args.epochs)
     # utils.adjust_learning_rate(optimizer, lr)
-    lr = optimizer.lr
+    
     
     train_res = utils.train(loaders['train'], model, optimizer, criterion, regularizer)
     # if args.curve is None or not has_bn:
     #    test_res = utils.test(loaders['test'], model, criterion, regularizer)
 
+    lr = get_lr(optimizer)
+    lr_last = get_last_lr(optimizer)
+    
     if epoch % args.save_freq == 0:
         utils.save_checkpoint(
             args.dir,
@@ -265,7 +278,7 @@ for epoch in range(start_epoch, args.epochs + 1):
         )
 
     time_ep = time.time() - time_ep
-    values = [epoch, lr, train_res['loss'], train_res['accuracy'], test_res['nll'],
+    values = [epoch, lr, lr_last, train_res['loss'], train_res['accuracy'], test_res['nll'],
               test_res['accuracy'], time_ep]
 
     table = tabulate.tabulate([values], columns, tablefmt='simple', floatfmt='9.4f')

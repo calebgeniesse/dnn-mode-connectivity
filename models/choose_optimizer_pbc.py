@@ -4,21 +4,21 @@ import torch
 import torch_optimizer as optim
 import numpy as np
 
-def choose_optimizer(optimizer_name: str, *params):
+def choose_optimizer(optimizer_name: str, *params, **kwargs):
     if optimizer_name == 'LBFGS':
-        return LBFGS(*params)
+        return LBFGS(*params, **kwargs)
     elif optimizer_name == 'AdaHessian':
-        return AdaHessian(*params)
+        return AdaHessian(*params, **kwargs)
     elif optimizer_name == 'Shampoo':
-        return Shampoo(*params)
+        return Shampoo(*params, **kwargs)
     elif optimizer_name == 'Yogi':
-        return Yogi(*params)
+        return Yogi(*params, **kwargs)
     elif optimizer_name == 'Apollo':
-        return Apollo(*params)
+        return Apollo(*params, **kwargs)
     elif optimizer_name == 'Adam':
-        return Adam(*params)
+        return Adam(*params, **kwargs)
     elif optimizer_name == 'SGD':
-        return SGD(*params)
+        return SGD(*params, **kwargs)
 
 def LBFGS(model_param,
         lr=1.0,

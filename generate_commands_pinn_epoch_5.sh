@@ -10,8 +10,8 @@ BETAS=(
 # )
 
 # TODO: can we skip training if we use linear initialization?
-EPOCHS=50
-EVAL_EPOCH=50
+EPOCHS=5
+EVAL_EPOCH=5
 
 
 for BETA in "${BETAS[@]}" ; do

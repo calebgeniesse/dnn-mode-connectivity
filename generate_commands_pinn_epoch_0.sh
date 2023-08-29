@@ -60,7 +60,6 @@ for BETA in "${BETAS[@]}" ; do
                     --transform=ToTensor \
                     --model=PINNDNN \
                     --epochs=${EPOCHS} \
-                    --wd=5e-4 \
                     --curve=Bezier \
                     --num_bends=3 \
                     --init_start=${MODE_1} \
@@ -71,7 +70,8 @@ for BETA in "${BETAS[@]}" ; do
                     --seed=0 \
                     --N_f=100 \
                     --optimizer_name='LBFGS' \
-                    --lr=1e-3 \
+                    --lr=1e-4 \
+                    --wd=5e-5 \
                     --L=1.0 \
                     --xgrid=256 \
                     --nt=100 \

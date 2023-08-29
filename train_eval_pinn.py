@@ -332,6 +332,14 @@ model.cuda()
 pinn_model.cuda()
 pinn_model.dnn = copy.deepcopy(model) 
 
+from models.choose_optimizer_pbc import choose_optimizer
+pinn_model.optimizer = choose_optimizer(
+    pinn_model.optimizer_name, 
+    pinn_model.dnn.parameters(), 
+    pinn_model.lr
+)
+
+
 
 def learning_rate_schedule(base_lr, epoch, total_epochs):
     alpha = epoch / total_epochs

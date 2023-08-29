@@ -213,13 +213,7 @@ def learning_rate_schedule(base_lr, epoch, total_epochs):
 
 criterion = F.cross_entropy
 regularizer = None if args.curve is None else curves.l2_regularizer(args.wd)
-# optimizer = torch.optim.SGD(
-#     filter(lambda param: param.requires_grad, model.parameters()),
-#     lr=args.lr,
-#     momentum=args.momentum,
-#     weight_decay=args.wd if args.curve is None else 0.0
-# )
-optimizer = torch.optim.Adam(base_model.parameters(), lr=args.lr)
+
 def get_lr(optimizer):
     for param_group in optimizer.param_groups:
         return param_group['lr']
@@ -229,6 +223,14 @@ def get_last_lr(optimizer):
     for param_group in optimizer.param_groups:
         lr = param_group['lr']
     return lr
+
+# optimizer = torch.optim.Adam(base_model.parameters(), lr=args.lr)
+optimizer = torch.optim.Adam(
+    filter(lambda param: param.requires_grad, model.parameters()),
+    lr=args.lr,
+    weight_decay=args.wd if args.curve is None else 0.0
+)
+
 
 
 start_epoch = 1
@@ -260,14 +262,13 @@ for epoch in range(start_epoch, args.epochs + 1):
     # lr = args.lr
     # lr = learning_rate_schedule(args.lr, epoch, args.epochs)
     # utils.adjust_learning_rate(optimizer, lr)
-    
+    lr = get_lr(optimizer)
+    lr_last = get_last_lr(optimizer)
     
     train_res = utils.train(loaders['train'], model, optimizer, criterion, regularizer)
     # if args.curve is None or not has_bn:
     #    test_res = utils.test(loaders['test'], model, criterion, regularizer)
 
-    lr = get_lr(optimizer)
-    lr_last = get_last_lr(optimizer)
     
     if epoch % args.save_freq == 0:
         utils.save_checkpoint(

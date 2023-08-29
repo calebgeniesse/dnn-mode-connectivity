@@ -99,6 +99,8 @@ parser.add_argument('--net', type=str, default='DNN', help='The net architecture
 parser.add_argument('--activation', default='tanh', help='Activation to use in the network.')
 parser.add_argument('--loss_style', default='mean', help='Loss for the network (MSE, vs. summing).')
 
+parser.add_argument('--visualize', default=False, action="store_true", help='Visualize the solution.')
+
 
 
 parser.add_argument('--num_points', type=int, default=5, metavar='N',
@@ -338,9 +340,15 @@ if pinn_model.optimizer_name == "LBFGS":
     pinn_model.optimizer = choose_optimizer(
         args.optimizer_name, 
         filter(lambda param: param.requires_grad, pinn_model.dnn.parameters()),
-        lr=args.lr
+        lr=args.lr,
+        max_iter=20,
+        max_eval=1.25 * 20,
+        history_size=50,
+        tolerance_grad=1e-7,
+        tolerance_change=1e-7,
     )
-else:
+    
+elif pinn_model.optimizer_name == "SGD":
     pinn_model.optimizer = choose_optimizer(
         args.optimizer_name, 
         filter(lambda param: param.requires_grad, pinn_model.dnn.parameters()),
@@ -348,7 +356,16 @@ else:
         momentum=args.momentum,
         weight_decay=args.wd if args.curve is None else 0.0
     )
+else:
+    pinn_model.optimizer = choose_optimizer(
+        args.optimizer_name, 
+        filter(lambda param: param.requires_grad, pinn_model.dnn.parameters()),
+        lr=args.lr,
+        weight_decay=args.wd if args.curve is None else 0.0
+    )
 
+if torch.is_grad_enabled():
+    pinn_model.optimizer.zero_grad(set_to_none=False)
 
 
 def learning_rate_schedule(base_lr, epoch, total_epochs):
@@ -436,10 +453,12 @@ for epoch in range(start_epoch, args.epochs + 1):
     #     torch.save(m.state_dict(), weights_path)
     #     return mode.load_state_dict(torch.load(weights_path))
 
-    pinn_model.dnn.load_state_dict(copy.deepcopy(model.state_dict()))
+    # pinn_model.dnn.load_state_dict(copy.deepcopy(model.state_dict()))
     pinn_model.train()
-    model.load_state_dict(copy.deepcopy(pinn_model.dnn.state_dict())) 
+    # model.load_state_dict(copy.deepcopy(pinn_model.dnn.state_dict())) 
     
+    # TODO: we were running self.optimizer.zero_grad() everytime we run pinn model
+    # TODO: now we do it during initialization, and after resetting the optimizer
     loss = pinn_model.loss_pinn()
     
     
@@ -448,11 +467,18 @@ for epoch in range(start_epoch, args.epochs + 1):
     x_ = np.linspace(0, 2*np.pi, args.xgrid, endpoint=False).reshape(-1, 1) # not inclusive
     t_ = np.linspace(0, 1, args.nt).reshape(-1, 1)
     X_, T_ = np.meshgrid(x_, t_) # all the X grid points T times, all the T grid points X times
+    X_star_ = np.hstack((X_.flatten()[:, None], T_.flatten()[:, None])) # all the x,t "test" data
+
+    u_pred = pinn_model.predict(X_star_)
     
-    u_pred = pinn_model.predict(X_)
-    tr_error_u_relative = np.linalg.norm(t_-u_pred, 2)/np.linalg.norm(t_, 2)
-    tr_error_u_abs = np.mean(np.abs(t_ - u_pred))
-    tr_error_u_linf = np.linalg.norm(t_ - u_pred, np.inf)/np.linalg.norm(t_, np.inf)
+    # print(u_pred)
+    # print(u_star)
+    # print(u_pred.max(), u_pred.min())
+    # print(u_star.max(), u_star.min())
+    
+    tr_error_u_relative = np.linalg.norm(u_star-u_pred, 2)/np.linalg.norm(u_star, 2)
+    tr_error_u_abs = np.mean(np.abs(u_star - u_pred))
+    tr_error_u_linf = np.linalg.norm(u_star - u_pred, np.inf)/np.linalg.norm(u_star, np.inf)
     
     
     # Test Error = (pred(X_star) vs. u_star)
@@ -460,6 +486,7 @@ for epoch in range(start_epoch, args.epochs + 1):
     te_error_u_relative = np.linalg.norm(u_star-u_pred, 2)/np.linalg.norm(u_star, 2)
     te_error_u_abs = np.mean(np.abs(u_star - u_pred))
     te_error_u_linf = np.linalg.norm(u_star - u_pred, np.inf)/np.linalg.norm(u_star, np.inf)
+    
 
     # print('Error u rel: %e' % (error_u_relative))
     # print('Error u abs: %e' % (error_u_abs))
@@ -484,7 +511,7 @@ for epoch in range(start_epoch, args.epochs + 1):
         utils.save_checkpoint(
             args.dir,
             epoch,
-            model_state=model.state_dict(),
+            model_state=pinn_model.dnn.state_dict(),
             optimizer_state=optimizer.state_dict()
         )
 
@@ -509,12 +536,48 @@ for epoch in range(start_epoch, args.epochs + 1):
     else:
         table = table.split('\n')[2]
     print(table)
+    
+    
+    
+    
+    if args.visualize:
+        
+        from visualize_pinn import *
+        path = f"heatmap_results/{args.system}_epoch_{epoch}"
+        if not os.path.exists(path):
+            os.makedirs(path)
+            
+            
+        x_ = np.linspace(0, 2*np.pi, args.xgrid, endpoint=False).reshape(-1, 1) # not inclusive
+        t_ = np.linspace(0, 1, args.nt).reshape(-1, 1)
+        X_, T_ = np.meshgrid(x_, t_) # all the X grid points T times, all the T grid points X times
+        X_star_ = np.hstack((X_.flatten()[:, None], T_.flatten()[:, None])) # all the x,t "test" data
+
+        # Training Error = (pred(X) vs. t) 
+        u_pred = pinn_model.predict(X_star_)
+        # print(u_pred.shape)
+        # print(len(t_))
+        # print(len(x_))
+        
+        u_pred = u_pred.reshape(len(t_), len(x_))
+       
+        exact_u(Exact, x_, t_, nu, beta, rho, orig_layers,
+                args.N_f, args.L, args.source, args.u0_str, args.system, 
+                path=path)
+        u_diff(Exact, u_pred, x_, t_, nu, beta, rho, args.seed, orig_layers, 
+               args.N_f, args.L, args.source, args.lr, args.u0_str, args.system, 
+               path=path)
+        u_predict(u_vals, u_pred, x_, t_, nu, beta, rho, args.seed, orig_layers, 
+                  args.N_f, args.L, args.source, args.lr, args.u0_str, args.system,
+                  path=path)
+        
+        plt.close('all')
 
 if args.epochs % args.save_freq != 0:
     utils.save_checkpoint(
         args.dir,
         args.epochs,
-        model_state=model.state_dict(),
+        model_state=pinn_model.dnn.state_dict(),
         optimizer_state=optimizer.state_dict()
     )
 
@@ -528,8 +591,8 @@ if args.epochs % args.save_freq != 0:
     
 
 checkpoint = torch.load(args.ckpt)
-model.load_state_dict(checkpoint['model_state'])
-pinn_model.dnn = copy.deepcopy(model)
+pinn_model.dnn.load_state_dict(checkpoint['model_state'])
+# pinn_model.dnn = copy.deepcopy(model)
 # pinn_model.load_state_dict(copy.deepcopy(model.state_dict()))
 
 # criterion = F.cross_entropy
@@ -585,7 +648,8 @@ for i, t_value in enumerate(ts):
     x_ = np.linspace(0, 2*np.pi, args.xgrid, endpoint=False).reshape(-1, 1) # not inclusive
     t_ = np.linspace(0, 1, args.nt).reshape(-1, 1)
     X_, T_ = np.meshgrid(x_, t_) # all the X grid points T times, all the T grid points X times
-    
+    X_star_ = np.hstack((X_.flatten()[:, None], T_.flatten()[:, None])) # all the x,t "test" data
+
     # Training Error = (pred(X) vs. t) 
     u_pred = pinn_model.predict(X_, coeff_t=t)
     tr_error_u_rel[i] = np.linalg.norm(t_-u_pred, 2)/np.linalg.norm(t_, 2)
@@ -594,7 +658,7 @@ for i, t_value in enumerate(ts):
     
     
     # Test Error = (pred(X_star) vs. u_star)
-    u_pred = pinn_model.predict(X_star, coeff_t=t)
+    u_pred = pinn_model.predict(X_star_, coeff_t=t)
     te_error_u_rel[i] = np.linalg.norm(u_star-u_pred, 2)/np.linalg.norm(u_star, 2)
     te_error_u_abs[i] = np.mean(np.abs(u_star - u_pred))
     te_error_u_linf[i] = np.linalg.norm(u_star - u_pred, np.inf)/np.linalg.norm(u_star, np.inf)
@@ -613,6 +677,41 @@ for i, t_value in enumerate(ts):
     else:
         table = table.split('\n')[2]
     print(table)
+    
+    
+    
+    if args.visualize:
+        from visualize_pinn import *
+        path = f"heatmap_results/{args.system}_t_{t_value}"
+        if not os.path.exists(path):
+            os.makedirs(path)
+            
+            
+        x_ = np.linspace(0, 2*np.pi, args.xgrid, endpoint=False).reshape(-1, 1) # not inclusive
+        t_ = np.linspace(0, 1, args.nt).reshape(-1, 1)
+        X_, T_ = np.meshgrid(x_, t_) # all the X grid points T times, all the T grid points X times
+        X_star_ = np.hstack((X_.flatten()[:, None], T_.flatten()[:, None])) # all the x,t "test" data
+
+        # Training Error = (pred(X) vs. t) 
+        u_pred = pinn_model.predict(X_star_, coeff_t=t)
+        # print(u_pred.shape)
+        # print(len(t_))
+        # print(len(x_))
+        
+        u_pred = u_pred.reshape(len(t_), len(x_))
+       
+        exact_u(Exact, x_, t_, nu, beta, rho, orig_layers,
+                args.N_f, args.L, args.source, args.u0_str, args.system, 
+                path=path)
+        u_diff(Exact, u_pred, x_, t_, nu, beta, rho, args.seed, orig_layers, 
+               args.N_f, args.L, args.source, args.lr, args.u0_str, args.system, 
+               path=path)
+        u_predict(u_vals, u_pred, x_, t_, nu, beta, rho, args.seed, orig_layers, 
+                  args.N_f, args.L, args.source, args.lr, args.u0_str, args.system,
+                  path=path)
+        
+        plt.close('all')
+
 
 
 def stats(values, dl):

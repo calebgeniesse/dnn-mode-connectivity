@@ -199,6 +199,9 @@ class PINN(torch.nn.Module):
         self.loss_style = loss_style
 
         self.iter = 0
+        
+        if torch.is_grad_enabled():
+            self.optimizer.zero_grad(set_to_none=False)
 
     def net_u(self, x, t, coeff_t=None):
         """The standard DNN that takes (x,t) --> u."""
@@ -264,7 +267,8 @@ class PINN(torch.nn.Module):
         """ Loss function. """
         
         if torch.is_grad_enabled():
-            self.optimizer.zero_grad()
+            self.optimizer.zero_grad(set_to_none=False)
+            
         u_pred = self.net_u(self.x_u, self.t_u, coeff_t=coeff_t)
         u_pred_lb = self.net_u(self.x_bc_lb, self.t_bc_lb, coeff_t=coeff_t)
         u_pred_ub = self.net_u(self.x_bc_ub, self.t_bc_ub, coeff_t=coeff_t)
@@ -287,16 +291,19 @@ class PINN(torch.nn.Module):
 
         loss = loss_u + loss_b + self.L*loss_f
 
-        # if loss.requires_grad:
-        loss.backward()
+            
+        if loss.requires_grad:
+            loss.backward()
 
         grad_norm = np.nan
-        # for (name,p) in self.dnn.named_parameters():
-        #     print(name)
-        #     print('\t',p.grad)
-        #     param_norm = p.grad.detach().data.norm(2)
-        #     grad_norm += param_norm.item() ** 2
-        # grad_norm = grad_norm ** 0.5
+        for (name,p) in self.dnn.named_parameters():
+            # skip gradient of fixed ends
+            if p.requires_grad is False:
+                # print(f"({name}).requires_grad is False)")
+                continue
+            param_norm = p.grad.detach().data.norm(2)
+            grad_norm += param_norm.item() ** 2
+            grad_norm = grad_norm ** 0.5
 
         if verbose:
             if self.iter % 100 == 0:

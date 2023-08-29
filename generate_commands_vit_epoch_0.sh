@@ -23,7 +23,7 @@ for THRESHOLD in "${THRESHOLDS[@]}" ; do
     echo ""
     
     # MODEL_1="resnet20_batch_norm_True_residual_True"
-    MODE_PATH="/global/homes/g/geniesse/dnn-mode-connectivity/checkpoints/ViT-models/${MODEL_1}.pt"
+    MODE_PATH="/global/homes/g/geniesse/dnn-mode-connectivity/checkpoints/Vit_loss_lens/${MODEL_1}.pt"
     SAVE_PATH="/global/homes/g/geniesse/dnn-mode-connectivity/checkpoints"
 
 

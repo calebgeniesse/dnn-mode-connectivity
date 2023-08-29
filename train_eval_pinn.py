@@ -332,12 +332,22 @@ model.cuda()
 pinn_model.cuda()
 pinn_model.dnn = copy.deepcopy(model) 
 
+# reset optimizer based on the curve model params
 from models.choose_optimizer_pbc import choose_optimizer
-pinn_model.optimizer = choose_optimizer(
-    pinn_model.optimizer_name, 
-    pinn_model.dnn.parameters(), 
-    pinn_model.lr
-)
+if pinn_model.optimizer_name == "LBFGS":
+    pinn_model.optimizer = choose_optimizer(
+        args.optimizer_name, 
+        filter(lambda param: param.requires_grad, pinn_model.dnn.parameters())
+        lr=args.lr
+    )
+else:
+    pinn_model.optimizer = choose_optimizer(
+        args.optimizer_name, 
+        filter(lambda param: param.requires_grad, pinn_model.dnn.parameters())
+        lr=args.lr,
+        momentum=args.momentum,
+        weight_decay=args.wd if args.curve is None else 0.0
+    )
 
 
 

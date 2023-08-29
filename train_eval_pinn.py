@@ -337,13 +337,13 @@ from models.choose_optimizer_pbc import choose_optimizer
 if pinn_model.optimizer_name == "LBFGS":
     pinn_model.optimizer = choose_optimizer(
         args.optimizer_name, 
-        filter(lambda param: param.requires_grad, pinn_model.dnn.parameters())
+        filter(lambda param: param.requires_grad, pinn_model.dnn.parameters()),
         lr=args.lr
     )
 else:
     pinn_model.optimizer = choose_optimizer(
         args.optimizer_name, 
-        filter(lambda param: param.requires_grad, pinn_model.dnn.parameters())
+        filter(lambda param: param.requires_grad, pinn_model.dnn.parameters()),
         lr=args.lr,
         momentum=args.momentum,
         weight_decay=args.wd if args.curve is None else 0.0

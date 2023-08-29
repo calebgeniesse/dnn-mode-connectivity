@@ -651,14 +651,20 @@ for i, t_value in enumerate(ts):
     X_star_ = np.hstack((X_.flatten()[:, None], T_.flatten()[:, None])) # all the x,t "test" data
 
     # Training Error = (pred(X) vs. t) 
-    u_pred = pinn_model.predict(X_, coeff_t=t)
-    tr_error_u_rel[i] = np.linalg.norm(t_-u_pred, 2)/np.linalg.norm(t_, 2)
-    tr_error_u_abs[i] = np.mean(np.abs(t_ - u_pred))
-    tr_error_u_linf[i] = np.linalg.norm(t_ - u_pred, np.inf)/np.linalg.norm(t_, np.inf)
+    # u_pred = pinn_model.predict(X_, coeff_t=t)
+    # tr_error_u_rel[i] = np.linalg.norm(t_-u_pred, 2)/np.linalg.norm(t_, 2)
+    # tr_error_u_abs[i] = np.mean(np.abs(t_ - u_pred))
+    # tr_error_u_linf[i] = np.linalg.norm(t_ - u_pred, np.inf)/np.linalg.norm(t_, np.inf)
+    
+    u_pred = pinn_model.predict(X_star_, coeff_t=t)
+    tr_error_u_rel[i] = np.linalg.norm(u_star - u_pred, 2)/np.linalg.norm(u_star, 2)
+    tr_error_u_abs[i] = np.mean(np.abs(u_star - u_pred))
+    tr_error_u_linf[i] = np.linalg.norm(u_star - u_pred, np.inf)/np.linalg.norm(u_star, np.inf)
+    
     
     
     # Test Error = (pred(X_star) vs. u_star)
-    u_pred = pinn_model.predict(X_star_, coeff_t=t)
+    u_pred = pinn_model.predict(X_star, coeff_t=t)
     te_error_u_rel[i] = np.linalg.norm(u_star-u_pred, 2)/np.linalg.norm(u_star, 2)
     te_error_u_abs[i] = np.mean(np.abs(u_star - u_pred))
     te_error_u_linf[i] = np.linalg.norm(u_star - u_pred, np.inf)/np.linalg.norm(u_star, np.inf)

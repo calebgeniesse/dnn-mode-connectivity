@@ -1,0 +1,1 @@
+python ll1dprofile/batchProcessing_profileOnly.py --input /../paraview_files/ --output /basin_points/

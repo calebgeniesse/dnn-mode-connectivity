@@ -13,7 +13,7 @@ import matplotlib.colors as mcolors
 
 import numpy as np
 from pyevtk.hl import imageToVTK, unstructuredGridToVTK
-from pyevtk.vtk import VtkVertex, VtkLine, VtkTriangle
+from pyevtk.vtk import VtkVertex, VtkLine, VtkTriangle, VtkPolyLine
 from itertools import combinations as combos
 from itertools import product
 
@@ -35,6 +35,9 @@ if 'PVPYTHON' not in os.environ:
 
 if 'TTK_PLUGIN' not in os.environ:
     os.environ['TTK_PLUGIN'] = "/Applications/ParaView-5.11.1.app/Contents/Plugins/TopologyToolKit.so"
+
+# export PVPYTHON=/Applications/ParaView-5.11.1.app/Contents/bin/pvpython
+# export TTK_PLUGIN=/Applications/ParaView-5.12.0.app/Contents/Plugins/TopologyToolKit.so
 
 
 ###############################################################################
@@ -428,7 +431,8 @@ def loss_landscape_to_vtu(
 
 
     # combine first two PCs with scaled loss
-    embedding = np.c_[embedding[:,:2], loss_values_scaled]
+    if embedding.shape[-1] < 3:
+        embedding = np.c_[embedding[:,:2], loss_values_scaled]
 
     # define x,y,z (ascontiguousarray to avoid VTK errors)
     x = np.ascontiguousarray(embedding[:,0]).astype(float)

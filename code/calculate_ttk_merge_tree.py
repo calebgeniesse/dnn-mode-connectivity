@@ -78,7 +78,7 @@ else:
 
 
 # ----------------------------------------------------------------
-# simplify by persistence
+# tetrahedralize
 # ----------------------------------------------------------------
 # create a new 'Tetrahedralize'
 tetrahedralize1 = Tetrahedralize(registrationName='Tetrahedralize1', Input=loss_landscape)
